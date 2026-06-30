@@ -9,6 +9,7 @@ import hashlib
 class InfraBlobStore:
     def __init__(self, archive_root):
         self.root_path = Path(archive_root)
+        self.path_event_log = self.root_path.joinpath("events")
 
     # def read(self, object_path):
     #     with open(object_path, mode='r') as f:
