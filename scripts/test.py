@@ -4,6 +4,7 @@ from signing import get_signing_key, verify_event
 from blob import InfraBlobStore
 from events import create_node, create_event, write_events
 import nacl
+from pprint import pprint
 
 load_dotenv()
 
@@ -13,6 +14,7 @@ signing_key: nacl.signing.SigningKey = get_signing_key(my_private_key_hex)
 public_key_hex: str = signing_key.verify_key.encode(nacl.encoding.HexEncoder).decode(
     "utf-8"
 )
+print("YOUR PUBLIC KEY HEX (author_id) IS:", public_key_hex)
 if __name__ == "__main__":
     import sys
     import json
@@ -22,7 +24,7 @@ if __name__ == "__main__":
     )
     if sys.argv[1] == "create":
 
-        node1_content = "Ohm"
+        node1_content = "First node text content"
         media_type = "text/plain; charset=utf-8"
 
         binary_content: bytes = infra.bin_encode_decode(
@@ -35,11 +37,16 @@ if __name__ == "__main__":
         infra.persist_bin_blob(binary_content, blob_hash)
 
         json_dict = create_node(
-            blob_hash=blob_hash, data_type="text/plain; charset=utf-8"
+            blob_hash=blob_hash,
+            data_type="text/plain; charset=utf-8",
+            blob_hash_prefix=infra.blob_hash_prefix,
         )
 
         event = create_event(
-            payload=json_dict, prev_hash=None, public_key=public_key_hex
+            payload=json_dict,
+            prev_hash=None,
+            public_key=public_key_hex,
+            first_event=True,
         )
 
         write_events([event], signing_key, infra.root_path)
@@ -49,7 +56,13 @@ if __name__ == "__main__":
             with open(event_log_filename, "rt", encoding="utf-8") as fl:
                 for l in fl:
                     event = json.loads(l)
-                    print(event)
+
                     assert verify_event(
                         event["payload"], event["signature"], public_key_hex
                     )
+                    pprint(event)
+                    binary_data = infra.load_bin_blob(event["payload"]["blob_hash"])
+                    decoded_data = infra.bin_encode_decode(
+                        binary_data, event["payload"]["media_type"], "decode"
+                    )
+                    print("DECODED DATA", decoded_data)

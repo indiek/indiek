@@ -10,6 +10,7 @@ class InfraBlobStore:
     def __init__(self, archive_root):
         self.root_path = Path(archive_root)
         self.path_event_log = self.root_path.joinpath("events")
+        self.blob_hash_prefix = "sha256:"
 
     # def read(self, object_path):
     #     with open(object_path, mode='r') as f:
@@ -21,6 +22,8 @@ class InfraBlobStore:
     def bin_encode_decode(self, content: Any, content_type: str, encode_decode: str):
         if content_type == "text/plain; charset=utf-8" and encode_decode == "encode":
             return content.encode(encoding="utf-8")
+        if content_type == "text/plain; charset=utf-8" and encode_decode == "decode":
+            return str(content, encoding="utf-8")
 
     def persist_bin_blob(self, bin_content, sha256_hex):
         """
@@ -42,5 +45,12 @@ class InfraBlobStore:
             with open(file_path, "wb") as f:
                 f.write(bin_content)
 
-    # def load_bin_blob(self, bin_hash):
-    #     return self.read(self.hash_path_conversion(bin_hash, direction="hash_to_path"))
+    def load_bin_blob(self, blob_hash_from_json: str) -> bytes:
+        skip = len(self.blob_hash_prefix)
+        sha256_hex = blob_hash_from_json[skip:]
+        prefix1 = sha256_hex[:2]
+        prefix2 = sha256_hex[2:4]
+        dir_path = os.path.join(self.root_path, "blobs", "sha256", prefix1, prefix2)
+        file_path = os.path.join(dir_path, sha256_hex)
+        with open(file_path, "rb") as f:
+            return f.read()

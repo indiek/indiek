@@ -7,7 +7,13 @@ from typing import Dict
 from signing import sign_event
 
 
-def create_event(payload, prev_hash, public_key):
+def create_event(payload, prev_hash, public_key, first_event: bool = False):
+    if first_event:
+        assert prev_hash is None, "first event cannot have a predecessor"
+    else:
+        assert (
+            prev_hash is not None
+        ), "only the first event is allowed to have no predecessor"
     event = {
         "header": {
             "version": "1.0",
@@ -20,12 +26,12 @@ def create_event(payload, prev_hash, public_key):
     return event
 
 
-def create_node(blob_hash, data_type) -> Dict:
+def create_node(blob_hash, data_type, blob_hash_prefix) -> Dict:
     return {
         "event_type": "create_node",
         "node_id": str(uuid.uuid7()),
         "media_type": data_type,
-        "blob_hash": blob_hash,
+        "blob_hash": blob_hash_prefix + blob_hash,
     }
 
 
