@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
         event = create_event(body=body, public_key=curr_public_key, archive=archive)
 
-        write_event(event, signing_key, archive)
+        write_event(event, curr_signing_key, archive)
     # elif sys.argv[1] == "createedge":
 
     #     edge_content = "Some metadata text associated with this edge"
