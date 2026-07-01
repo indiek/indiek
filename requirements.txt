@@ -1,2 +1,3 @@
 pynacl
 python-dotenv
+pydantic

@@ -19,15 +19,8 @@ def get_signing_key(hex_private_key):
     return nacl.signing.SigningKey(private_key_bytes)
 
 
-# # 1. Generate Keys
-# def get_signing_key(seed=None):
-#     if seed:
-#         return nacl.signing.SigningKey(seed)
-#     return nacl.signing.SigningKey.generate()
-
-
 # 2. Canonical Hashing
-def get_canonical_hash(body) -> bytes:
+def get_canonical_hash(body: dict) -> bytes:
     # Sort keys alphabetically to ensure deterministic hashing
     body_bytes = json.dumps(body, sort_keys=True).encode("utf-8")
     return hashlib.sha256(body_bytes).digest()
@@ -46,7 +39,7 @@ def sign_event(body, signing_key):
 
 
 # 4. Verification Function (Crucial for your Archive)
-def verify_event(body, signature_hex, public_key_hex):
+def verify_signature(body, signature_hex, public_key_hex):
     try:
         # Reconstruct public key
         verify_key = nacl.signing.VerifyKey(
