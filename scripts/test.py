@@ -61,7 +61,7 @@ if __name__ == "__main__":
             blob_hash_prefix=archive.blob_store.blob_hash_prefix,
         )
 
-        event = create_event(payload=body, public_key=curr_public_key, archive=archive)
+        event = create_event(body=body, public_key=curr_public_key, archive=archive)
 
         write_event(event, signing_key, archive)
     # elif sys.argv[1] == "createedge":

@@ -97,20 +97,21 @@ class Archive:
     ):
         self.event_log = event_log
         self.blob_store = blob_store
-        self.last_event_hash_ = None
+        self.last_event_hash_: str | None = None
         self.nevents_ = None
         if check_integrity:
             self.last_event_hash_, self.nevents_ = self.check_archive_integrity()
 
     def check_archive_integrity(self) -> Tuple[str, int]:
         # TODO: currently doesn't check public keys against MANIFEST
-        expected_prev_hash = None  # as should be for first event
+        real_prev_hash = None  # for scenario where event log is empty
         ecount = 0
         for ecount, event in enumerate(self.event_log):
-            # 1. Check Chain
-            current_hash = get_canonical_hash(event)
-            if expected_prev_hash is not None and current_hash != expected_prev_hash:
-                raise IntegrityError("Chain broken!")
+            # 1. check that the stored previous hash matches the real previous hash
+            if ecount:  # nothing to check for genesis event
+                stored_prev_hash = event["header"]["prev_hash"]
+                if real_prev_hash != stored_prev_hash:
+                    raise IntegrityError("Chain broken!")
 
             # 2. Check Signature
             public_key_hex = event["header"]["author"]
@@ -122,9 +123,11 @@ class Archive:
                 if not self.verify_blob_on_disk(event["body"]["blob_hash"]):
                     raise IntegrityError("File corrupted or missing!")
 
-            expected_prev_hash = current_hash  # Update for next iteration
+            # prepare for next iteration
+            real_prev_hash = get_canonical_hash(event).hex()
+
         print("ARCHIVE INTEGRITY VERIFIED")
-        return expected_prev_hash, ecount + int(expected_prev_hash is not None)
+        return real_prev_hash, ecount + int(real_prev_hash is not None)
 
     def verify_blob_on_disk(self, blob_hash):
         binary_data = self.blob_store.load_bin_blob(blob_hash)

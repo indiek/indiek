@@ -13,10 +13,6 @@ PublicKeyHexStr = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 class MediaType(str, Enum):
     TEXT_PLAIN = "text/plain; charset=utf-8"
-    VIDEO_MP4 = "video/mp4"
-    IMAGE_JPEG = "image/jpeg"
-    IMAGE_PNG = "image/png"
-    APPLICATION_OCTET = "application/octet-stream"
 
 
 class EventHeader(BaseModel):

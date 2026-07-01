@@ -28,7 +28,7 @@ from blob import Archive
 from models import EventModel, EventBody, EventHeader
 
 
-def create_event(payload: EventBody, public_key: str, archive: Archive) -> EventModel:
+def create_event(body: EventBody, public_key: str, archive: Archive) -> EventModel:
 
     prev_hash = archive.last_event_hash_ if archive.nevents_ else None
 
@@ -36,7 +36,7 @@ def create_event(payload: EventBody, public_key: str, archive: Archive) -> Event
         header=EventHeader(  # timestamp default factory
             version="1.0", prev_hash=prev_hash, author=public_key
         ),
-        body=payload,
+        body=body,
     )
 
 
