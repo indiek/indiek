@@ -23,7 +23,6 @@ except ValidationError as e:
 
 import os
 from datetime import datetime
-import uuid
 from signing import sign_event, get_canonical_hash
 from blob import Archive
 from models import EventModel, EventBody, EventHeader
@@ -42,13 +41,10 @@ def create_event(payload: EventBody, public_key: str, archive: Archive) -> Event
 
 
 def create_node(blob_hash, data_type, blob_hash_prefix) -> EventBody:
-    return EventBody(
-        **{
-            "event_type": "create_node",
-            "node_id": str(uuid.uuid7()),
-            "media_type": data_type,
-            "blob_hash": blob_hash_prefix + blob_hash,
-        }
+    return EventBody(  # node_id default factory
+        event_type="create_node",
+        media_type=data_type,
+        blob_hash=blob_hash_prefix + blob_hash,
     )
 
 

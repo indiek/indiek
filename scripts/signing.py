@@ -23,10 +23,14 @@ def get_signing_key(hex_private_key):
 # 2. Canonical Hashing
 def get_canonical_hash(body: dict | BaseModel) -> bytes:
     if isinstance(body, BaseModel):
-        json_dump = body.model_dump_json(sort_keys=True)
+        # 1. Dump to a standard, JSON-safe dictionary
+        json_ready_dict = body.model_dump(mode="json")
     else:
-        json_dump = json.dumps(body, sort_keys=True)
+        json_ready_dict = body
+
     # Sort keys alphabetically to ensure deterministic hashing
+    json_dump = json.dumps(json_ready_dict, sort_keys=True)
+
     body_bytes = json_dump.encode("utf-8")
     return hashlib.sha256(body_bytes).digest()
 

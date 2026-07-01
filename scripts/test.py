@@ -2,7 +2,8 @@ import os
 from dotenv import load_dotenv
 from signing import get_signing_key
 from blob import InfraBlobStore, InfraEventLog, Archive
-from events import create_node, create_event, write_event, MediaType, EventModel
+from models import MediaType, EventModel
+from events import create_node, create_event, write_event
 import nacl
 from pprint import pprint
 

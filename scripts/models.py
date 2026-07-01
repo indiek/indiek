@@ -48,3 +48,4 @@ class EventBody(BaseModel):
 class EventModel(BaseModel):
     header: EventHeader
     body: EventBody
+    signature: str | None = None
