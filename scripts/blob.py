@@ -2,16 +2,21 @@
 
 from typing import Any, Tuple
 import os
-import glob
 import json
-from datetime import datetime
 from pathlib import Path
 import hashlib
 from signing import verify_signature, get_canonical_hash
+from models import MediaType
 
 
 class IntegrityError(Exception):
     """The archive is corrupted"""
+
+    pass
+
+
+class FileExistsException(Exception):
+    """File Exists"""
 
     pass
 
@@ -43,9 +48,9 @@ class InfraBlobStore(InfraIO):
         return hashlib.sha256(bin_blob).hexdigest()
 
     def bin_encode_decode(self, content: Any, content_type: str, encode_decode: str):
-        if content_type == "text/plain; charset=utf-8" and encode_decode == "encode":
+        if content_type == MediaType.TEXT_PLAIN and encode_decode == "encode":
             return content.encode(encoding="utf-8")
-        if content_type == "text/plain; charset=utf-8" and encode_decode == "decode":
+        if content_type == MediaType.TEXT_PLAIN and encode_decode == "decode":
             return str(content, encoding="utf-8")
 
     def persist_bin_blob(self, bin_content, sha256_hex):
@@ -67,6 +72,9 @@ class InfraBlobStore(InfraIO):
         if not os.path.exists(file_path):
             with open(file_path, "wb") as f:
                 f.write(bin_content)
+            print(f"BLOB FILE WRITTEN TO {file_path}")
+        else:
+            raise FileExistsException(file_path)
 
     def load_bin_blob(self, blob_hash_from_json: str) -> bytes:
         skip = len(self.blob_hash_prefix)

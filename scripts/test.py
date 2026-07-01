@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from signing import get_signing_key, verify_signature
+from signing import get_signing_key
 from blob import InfraBlobStore, InfraEventLog, Archive
 from events import create_node, create_event, write_event, MediaType, EventModel
 import nacl
@@ -18,14 +18,13 @@ signing_key: nacl.signing.SigningKey = get_signing_key(my_private_key_hex)
 public_key_hex: str = signing_key.verify_key.encode(nacl.encoding.HexEncoder).decode(
     "utf-8"
 )
-anonymous1_public_key_hex: str = signing_key.verify_key.encode(
+anonymous1_public_key_hex: str = anonymous_1_signing_key.verify_key.encode(
     nacl.encoding.HexEncoder
 ).decode("utf-8")
 print("GENESIS AUTHOR PUBLIC KEY HEX (author_id) IS:", public_key_hex)
 print("ANONYMOUS AUTHOR 1 PUBLIC KEY HEX (author_id) IS:", anonymous1_public_key_hex)
 if __name__ == "__main__":
     import sys
-    import json
 
     rootp = "/Users/adrianradillo/prog/indiek/public_archive/archive/"
     infra_blob = InfraBlobStore(archive_root=rootp)
@@ -57,13 +56,13 @@ if __name__ == "__main__":
 
         body = create_node(
             blob_hash=blob_hash,
-            data_type="text/plain; charset=utf-8",
+            data_type=MediaType.TEXT_PLAIN,
             blob_hash_prefix=archive.blob_store.blob_hash_prefix,
         )
 
         event = create_event(payload=body, public_key=curr_public_key, archive=archive)
 
-        write_event([event], signing_key, archive.event_log)
+        write_event(event, signing_key, archive)
     # elif sys.argv[1] == "createedge":
 
     #     edge_content = "Some metadata text associated with this edge"

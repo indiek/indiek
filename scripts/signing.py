@@ -1,6 +1,7 @@
 import json
 import hashlib
 import nacl.signing
+from pydantic import BaseModel
 
 # import nacl.encoding
 
@@ -20,14 +21,18 @@ def get_signing_key(hex_private_key):
 
 
 # 2. Canonical Hashing
-def get_canonical_hash(body: dict) -> bytes:
+def get_canonical_hash(body: dict | BaseModel) -> bytes:
+    if isinstance(body, BaseModel):
+        json_dump = body.model_dump_json(sort_keys=True)
+    else:
+        json_dump = json.dumps(body, sort_keys=True)
     # Sort keys alphabetically to ensure deterministic hashing
-    body_bytes = json.dumps(body, sort_keys=True).encode("utf-8")
+    body_bytes = json_dump.encode("utf-8")
     return hashlib.sha256(body_bytes).digest()
 
 
 # 3. Signing Function
-def sign_event(body, signing_key):
+def sign_event(body: dict | BaseModel, signing_key):
     # Hash the data
     msg_hash = get_canonical_hash(body)
 

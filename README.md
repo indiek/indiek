@@ -11,3 +11,20 @@ The durable thing is the signed append-only event history. Everything else shoul
 2. Each leaf data (blob) has an ID that is exactly its sha256 hash
 3. The metadata is a signed append-only event log, which provides the ability to reconstruct the whole graph. Each event is signed.
 4. Each node and edge in that graph has a UUID7 ID
+
+
+
+# Modules import hierarchy
+Module A
+  Module B
+means that A imports B
+
+events
+  blob
+    signing
+      models
+    models
+  signing
+    models
+  models
+
