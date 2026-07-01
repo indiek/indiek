@@ -67,6 +67,8 @@ def write_event(event: EventModel, signing_key, arc: Archive):
 
     # Append to the daily log
     file_path = os.path.join(dir_path, "events.ndjson")
+    event_json_str = event.model_dump_json()
     with open(file_path, "a", encoding="utf-8") as f:
-        f.write(event.model_dump_json() + "\n")
+        f.write(event_json_str + "\n")
+    print(f"EVENT {event_json_str} WRITTEN TO {file_path}")
     arc.last_event_hash_ = event_hash

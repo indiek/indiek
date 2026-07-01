@@ -43,6 +43,7 @@ class InfraBlobStore(InfraIO):
     def __init__(self, archive_root):
         super().__init__(archive_root)
         self.blob_hash_prefix = "sha256:"
+        self.blobs_path = os.path.join(self.root_path, "blobs", "sha256")
 
     def get_blob_hash(self, bin_blob):
         return hashlib.sha256(bin_blob).hexdigest()
@@ -62,7 +63,7 @@ class InfraBlobStore(InfraIO):
         prefix1 = sha256_hex[:2]
         prefix2 = sha256_hex[2:4]
 
-        dir_path = os.path.join(self.root_path, "blobs", "sha256", prefix1, prefix2)
+        dir_path = os.path.join(self.blobs_path, prefix1, prefix2)
         os.makedirs(dir_path, exist_ok=True)
 
         # Write the file named by its hash
@@ -81,7 +82,7 @@ class InfraBlobStore(InfraIO):
         sha256_hex = blob_hash_from_json[skip:]
         prefix1 = sha256_hex[:2]
         prefix2 = sha256_hex[2:4]
-        dir_path = os.path.join(self.root_path, "blobs", "sha256", prefix1, prefix2)
+        dir_path = os.path.join(self.blobs_path, prefix1, prefix2)
         file_path = os.path.join(dir_path, sha256_hex)
         with open(file_path, "rb") as f:
             return f.read()
@@ -128,4 +129,5 @@ class Archive:
     def verify_blob_on_disk(self, blob_hash):
         binary_data = self.blob_store.load_bin_blob(blob_hash)
         real_hash = self.blob_store.get_blob_hash(binary_data)
-        return blob_hash == real_hash
+        given = blob_hash[len(self.blob_store.blob_hash_prefix) :]
+        return given == real_hash
