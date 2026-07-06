@@ -34,7 +34,7 @@ def main():
     edge_parser.add_argument("--target-node", required=True, help="ID of target node")
 
     # Command: $ ik read
-    read_parser = subparsers.add_parser("read", help="Read data")
+    # read_parser = subparsers.add_parser("read", help="Read data")
 
     # Parse the arguments from the terminal
     args = parser.parse_args()

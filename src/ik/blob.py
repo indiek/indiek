@@ -35,8 +35,8 @@ class InfraEventLog(InfraIO):
     def __iter__(self):
         for event_log_filename in self.path_event_log.rglob("*ndjson"):
             with open(event_log_filename, "rt", encoding="utf-8") as f:
-                for l in f:
-                    yield json.loads(l)
+                for event_line in f:
+                    yield json.loads(event_line)
 
 
 class InfraBlobStore(InfraIO):
