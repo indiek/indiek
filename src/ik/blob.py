@@ -86,7 +86,8 @@ class InfraBlobStore(InfraIO):
                 f.write(bin_content)
             print(f"BLOB FILE WRITTEN TO {file_path}")
         else:
-            raise FileExistsException(file_path)
+            # TODO: handle the warning below better
+            print("***WARNING*** FILE EXISTS; NOTHING ADDITIONAL WRITTEN IN blobs/")
 
     def load_bin_blob(self, blob_hash_from_json: str) -> bytes:
         skip = len(self.blob_hash_prefix)
