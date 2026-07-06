@@ -45,16 +45,27 @@ class InfraBlobStore(InfraIO):
         self.blob_hash_prefix = "sha256:"
         self.blobs_path = os.path.join(self.root_path, "blobs", "sha256")
 
-    def get_blob_hash(self, bin_blob):
+    def create_and_persist_blob(self, content, media_type):
+        binary_content: bytes = self._bin_encode_decode(
+            content=content, content_type=media_type, encode_decode="encode"
+        )
+
+        # The hash is the ID and determines the storage path
+        blob_hash: str = self._get_blob_hash(binary_content)  # sha256:XXXXX
+
+        self._persist_bin_blob(binary_content, blob_hash)
+        return blob_hash
+
+    def _get_blob_hash(self, bin_blob):
         return hashlib.sha256(bin_blob).hexdigest()
 
-    def bin_encode_decode(self, content: Any, content_type: str, encode_decode: str):
+    def _bin_encode_decode(self, content: Any, content_type: str, encode_decode: str):
         if content_type == MediaType.TEXT_PLAIN and encode_decode == "encode":
             return content.encode(encoding="utf-8")
         if content_type == MediaType.TEXT_PLAIN and encode_decode == "decode":
             return str(content, encoding="utf-8")
 
-    def persist_bin_blob(self, bin_content, sha256_hex):
+    def _persist_bin_blob(self, bin_content, sha256_hex):
         """
         Persists binary data using a sharded content-addressable path.
         Example: blobs/a1/b2/a1b2c3d4...
