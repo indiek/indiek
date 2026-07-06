@@ -3,3 +3,4 @@ data.md
 .keys
 .env
 src/ik/__pycache__
+*graphml
