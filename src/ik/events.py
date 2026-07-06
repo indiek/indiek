@@ -1,26 +1,3 @@
-"""
-from pydantic import ValidationError
-
-valid_payload = {
-    "header": {
-        "prev_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2", # 64 chars
-        "author": "9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c"    # 64 chars
-    },
-    "body": {
-        "media_type": "video/mp4",
-        "blob_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"   # Raw hex
-    }
-}
-
-try:
-    event = EventModel(**valid_payload)
-    print("Successfully prepended prefix:")
-    print(event.body.blob_hash) # Output: sha256:e3b0c442...
-except ValidationError as e:
-    print(e)
-
-"""
-
 import os
 from uuid import UUID
 from datetime import datetime
@@ -41,7 +18,7 @@ def create_event(body: EventBody, public_key: str, archive: Archive) -> EventMod
     )
 
 
-def create_node(blob_hash, data_type, blob_hash_prefix) -> Node:
+def create_vertex(blob_hash, data_type, blob_hash_prefix) -> Node:
     return Node(  # node_id default factory
         event_type=EventType.CREATE_NODE,
         media_type=data_type,
