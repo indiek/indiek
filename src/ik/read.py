@@ -1,8 +1,9 @@
 from pprint import pprint
-from ik.models import EventModel
+from ik.models import EventModel, MediaType
 
 
 def run(archive):
+    # TODO: use blob_resolver from blob.py
     for event_dict in archive.event_log:
         pprint(event_dict)
         event = EventModel(**event_dict)

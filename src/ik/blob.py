@@ -99,6 +99,12 @@ class InfraBlobStore(InfraIO):
         with open(file_path, "rb") as f:
             return f.read()
 
+    def blob_resolver(self, blob_hash: str, media_type: MediaType) -> str:
+        if media_type != MediaType.TEXT_PLAIN:
+            raise NotImplementedError(f"Unsupported media type {media_type}")
+        binary_data = self.load_bin_blob(blob_hash)
+        return self._bin_encode_decode(binary_data, media_type, "decode")
+
 
 class Archive:
     def __init__(

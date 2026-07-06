@@ -7,6 +7,16 @@ from ik.blob import InfraBlobStore, InfraEventLog, Archive
 import ik.create_node as create_node
 import ik.create_edge as create_edge
 import ik.read as read
+import ik.export as export
+
+
+def dummy_blob_resolver(blob_hash: str) -> str:
+    """
+    Example resolver. In reality, you'd parse the hash,
+    navigate to archive/blobs/... and read the text file.
+    """
+    # Just for demonstration:
+    return "this is some content"
 
 
 def main():
@@ -38,6 +48,13 @@ def main():
     # Command: $ ik read
     subparsers.add_parser("read", help="Read data")
 
+    # Command: $ ik export
+    export_parser = subparsers.add_parser(
+        "export", help="Export the full archive to a GraphML file"
+    )
+    export_parser.add_argument(
+        "--output-path", required=True, help="Path to file to be persisted to disk"
+    )
     # Parse the arguments from the terminal
     args = parser.parse_args()
 
@@ -96,6 +113,8 @@ def main():
 
     elif args.command == "read":
         read.run(archive)
+    elif args.command == "export":
+        export.run(archive, args.output_path)
 
 
 if __name__ == "__main__":
