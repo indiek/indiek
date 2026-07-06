@@ -5,8 +5,8 @@ import os
 import json
 from pathlib import Path
 import hashlib
-from signing import verify_signature, get_canonical_hash
-from models import MediaType
+from ik.signing import verify_signature, get_canonical_hash
+from ik.models import MediaType
 
 
 class IntegrityError(Exception):

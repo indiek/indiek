@@ -1,5 +1,7 @@
-from models import MediaType
-from events import create_vertex, create_event, write_event
+from ik.models import MediaType
+from ik.events import create_vertex, create_event, write_event
+
+
 def run(node_content: str, curr_public_key, curr_signing_key, archive):
     # TODO: make this user-controllable when the time comes
     media_type = MediaType.TEXT_PLAIN
@@ -9,9 +11,7 @@ def run(node_content: str, curr_public_key, curr_signing_key, archive):
     )
 
     # The hash is the ID and determines the storage path
-    blob_hash: str = archive.blob_store.get_blob_hash(
-        binary_content
-    )  # sha256:XXXXX
+    blob_hash: str = archive.blob_store.get_blob_hash(binary_content)  # sha256:XXXXX
 
     archive.blob_store.persist_bin_blob(binary_content, blob_hash)
 

@@ -3,8 +3,6 @@ import hashlib
 import nacl.signing
 from pydantic import BaseModel
 
-# import nacl.encoding
-
 
 def get_signing_key(hex_private_key):
     """
