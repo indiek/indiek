@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from ik.signing import get_signing_key
 from ik.blob import InfraBlobStore, InfraEventLog, Archive
 import ik.create_node as create_node
+import ik.read as read
 
 
 def main():
@@ -34,7 +35,7 @@ def main():
     edge_parser.add_argument("--target-node", required=True, help="ID of target node")
 
     # Command: $ ik read
-    # read_parser = subparsers.add_parser("read", help="Read data")
+    subparsers.add_parser("read", help="Read data")
 
     # Parse the arguments from the terminal
     args = parser.parse_args()
@@ -85,8 +86,7 @@ def main():
         # create_edge.run()
         pass
     elif args.command == "read":
-        # read.run()
-        pass
+        read.run(archive)
 
 
 if __name__ == "__main__":
