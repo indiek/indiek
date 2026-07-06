@@ -1,8 +1,9 @@
 from pydantic import BaseModel, Field, field_validator
-from typing_extensions import Annotated
+from typing_extensions import Annotated, Literal, Union
 from uuid import UUID, uuid7
 import time
 from enum import Enum
+from abc import ABC
 
 # Reusable regex constraint for exactly 64-character lowercase hex strings (SHA-256)
 Sha256HexStr = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
@@ -29,7 +30,7 @@ class EventHeader(BaseModel):
     author: PublicKeyHexStr
 
 
-class EventBody(BaseModel):
+class EventBody(BaseModel, ABC):
     event_type: EventType
     media_type: MediaType  # Restricted strictly to Enum items
     blob_hash: str = Field(
@@ -46,10 +47,12 @@ class EventBody(BaseModel):
 
 
 class Node(EventBody):
+    body_type: Literal["node"] = "node"
     node_id: UUID = Field(default_factory=uuid7)
 
 
 class Edge(EventBody):
+    body_type: Literal["edge"] = "edge"
     edge_id: UUID = Field(default_factory=uuid7)
     source_node: UUID
     target_node: UUID
@@ -57,5 +60,5 @@ class Edge(EventBody):
 
 class EventModel(BaseModel):
     header: EventHeader
-    body: EventBody
+    body: Union[Node, Edge] = Field(discriminator="body_type")
     signature: str | None = None
