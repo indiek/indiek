@@ -1,5 +1,5 @@
 from pprint import pprint
-from ik.models import EventModel, MediaType
+from ik.models import EventModel
 
 
 def run(archive):

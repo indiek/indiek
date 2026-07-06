@@ -1,6 +1,5 @@
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
-from typing import Iterable, Dict, Any, Callable, Optional
 from ik.models import MediaType
 from ik.blob import Archive
 
