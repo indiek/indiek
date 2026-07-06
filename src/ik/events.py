@@ -37,11 +37,14 @@ def create_edge(
     # verify that source and target exist
     source_present, target_present = False, False
     for event in archive.event_log:
-        eid = UUID(event["body"]["node_id"])
-        if eid == source_id:
-            source_present = True
-        if eid == target_id:
-            target_present = True
+        try:
+            eid = UUID(event["body"]["node_id"])
+            if eid == source_id:
+                source_present = True
+            if eid == target_id:
+                target_present = True
+        except KeyError:  # the event is not about a node
+            continue
     if not source_present:
         raise ValueError(f"SOURCE NODE {source_id} NOT FOUND IN ARCHIVE")
     if not target_present:

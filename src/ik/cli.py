@@ -70,6 +70,7 @@ def main():
     print(f"THE ARCHIVE AT {rootp} HAS {archive.nevents_} EVENTS")
 
     if args.command in {"create_node", "create_edge"}:
+        # TODO: for the blob writing events; add a cleaning last step to erase written blob if event persistence failed
         if args.author == "ANONYMOUS1":
             curr_signing_key = anonymous_1_signing_key
             curr_public_key = anonymous1_public_key_hex
