@@ -7,7 +7,7 @@ def run(archive):
         pprint(event_dict)
         event = EventModel(**event_dict)
         binary_data = archive.blob_store.load_bin_blob(event.body.blob_hash)
-        decoded_data = archive.blob_store.bin_encode_decode(
+        decoded_data = archive.blob_store._bin_encode_decode(
             binary_data, event.body.media_type, "decode"
         )
         print("DECODED DATA", decoded_data)

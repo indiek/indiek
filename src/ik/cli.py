@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from ik.signing import get_signing_key
 from ik.blob import InfraBlobStore, InfraEventLog, Archive
 import ik.create_node as create_node
+import ik.create_edge as create_edge
 import ik.read as read
 
 
@@ -83,8 +84,15 @@ def main():
         create_node.run(args.content, curr_public_key, curr_signing_key, archive)
 
     elif args.command == "create_edge":
-        # create_edge.run()
-        pass
+        create_edge.run(
+            args.content,
+            args.source_node,
+            args.target_node,
+            curr_public_key,
+            curr_signing_key,
+            archive,
+        )
+
     elif args.command == "read":
         read.run(archive)
 

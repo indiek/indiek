@@ -142,6 +142,6 @@ class Archive:
 
     def verify_blob_on_disk(self, blob_hash):
         binary_data = self.blob_store.load_bin_blob(blob_hash)
-        real_hash = self.blob_store.get_blob_hash(binary_data)
+        real_hash = self.blob_store._get_blob_hash(binary_data)
         given = blob_hash[len(self.blob_store.blob_hash_prefix) :]
         return given == real_hash
