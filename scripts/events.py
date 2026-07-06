@@ -22,17 +22,18 @@ except ValidationError as e:
 """
 
 import os
+from uuid import UUID
 from datetime import datetime
 from signing import sign_event, get_canonical_hash
 from blob import Archive
-from models import EventModel, EventBody, EventHeader
+from models import EventModel, Node, EventBody, EventHeader, Edge, EventType
 
 
 def create_event(body: EventBody, public_key: str, archive: Archive) -> EventModel:
 
     prev_hash = archive.last_event_hash_ if archive.nevents_ else None
 
-    return EventModel(
+    return EventModel(  # signatre None at creation
         header=EventHeader(  # timestamp default factory
             version="1.0", prev_hash=prev_hash, author=public_key
         ),
@@ -40,11 +41,40 @@ def create_event(body: EventBody, public_key: str, archive: Archive) -> EventMod
     )
 
 
-def create_node(blob_hash, data_type, blob_hash_prefix) -> EventBody:
-    return EventBody(  # node_id default factory
-        event_type="create_node",
+def create_node(blob_hash, data_type, blob_hash_prefix) -> Node:
+    return Node(  # node_id default factory
+        event_type=EventType.CREATE_NODE,
         media_type=data_type,
         blob_hash=blob_hash_prefix + blob_hash,
+    )
+
+
+def create_edge(
+    source_id: UUID,
+    target_id: UUID,
+    blob_hash,
+    data_type,
+    blob_hash_prefix,
+    archive: Archive,
+) -> Edge:
+    # verify that source and target exist
+    source_present, target_present = False, False
+    for event in archive.event_log:
+        eid = UUID(event["body"]["node_id"])
+        if eid == source_id:
+            source_present = True
+        if eid == target_id:
+            target_present = True
+    if not source_present:
+        raise ValueError(f"SOURCE NODE {source_id} NOT FOUND IN ARCHIVE")
+    if not target_present:
+        raise ValueError(f"TARGET NODE {target_id} NOT FOUND IN ARCHIVE")
+    return Edge(
+        event_type=EventType.CREATE_EDGE,
+        media_type=data_type,
+        blob_hash=blob_hash_prefix + blob_hash,
+        source_node=source_id,
+        target_node=target_id,
     )
 
 
@@ -72,3 +102,4 @@ def write_event(event: EventModel, signing_key, arc: Archive):
         f.write(event_json_str + "\n")
     print(f"EVENT {event_json_str} WRITTEN TO {file_path}")
     arc.last_event_hash_ = event_hash
+    arc.nevents_ += 1

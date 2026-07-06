@@ -15,6 +15,11 @@ class MediaType(str, Enum):
     TEXT_PLAIN = "text/plain; charset=utf-8"
 
 
+class EventType(str, Enum):
+    CREATE_NODE = "create_node"
+    CREATE_EDGE = "create_edge"
+
+
 class EventHeader(BaseModel):
     version: str = "1.0"
     prev_hash: Sha256HexStr | None  # String and hex validation applied automatically
@@ -25,8 +30,7 @@ class EventHeader(BaseModel):
 
 
 class EventBody(BaseModel):
-    event_type: str = "create_node"
-    node_id: UUID = Field(default_factory=uuid7)
+    event_type: EventType
     media_type: MediaType  # Restricted strictly to Enum items
     blob_hash: str = Field(
         pattern=r"^sha256:[0-9a-f]{64}$"
@@ -39,6 +43,16 @@ class EventBody(BaseModel):
         if isinstance(value, str) and not value.startswith("sha256:"):
             return f"sha256:{value}"
         return value
+
+
+class Node(EventBody):
+    node_id: UUID = Field(default_factory=uuid7)
+
+
+class Edge(EventBody):
+    edge_id: UUID = Field(default_factory=uuid7)
+    source_node: UUID
+    target_node: UUID
 
 
 class EventModel(BaseModel):
