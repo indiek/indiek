@@ -1,6 +1,5 @@
 import os
 from uuid import UUID
-from datetime import datetime
 from ik.signing import sign_event, get_canonical_hash
 from ik.blob import Archive
 from ik.models import EventModel, Node, EventBody, EventHeader, Edge, EventType
