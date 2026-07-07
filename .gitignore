@@ -4,3 +4,5 @@ data.md
 .env
 src/ik/__pycache__
 *graphml
+lib
+*html

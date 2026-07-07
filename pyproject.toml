@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ik"
-version = "0.2.0"
+version = "0.3.0"
 description = "A minimalist CLI package for IndieK"
 requires-python = ">=3.14"
 dependencies = [
@@ -16,3 +16,8 @@ dependencies = [
 
 [project.scripts]
 ik = "ik.cli:main"
+
+[dependency-groups]
+dev = [
+    "pyvis>=0.3.2",
+]
