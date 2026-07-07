@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, field_validator
 from typing_extensions import Annotated, Literal, Union
 from uuid import UUID, uuid7
-import time
+from datetime import datetime
 from enum import Enum
 from abc import ABC
 
@@ -24,9 +24,7 @@ class EventType(str, Enum):
 class EventHeader(BaseModel):
     version: str = "1.0"
     prev_hash: Sha256HexStr | None  # String and hex validation applied automatically
-    timestamp: str = Field(
-        default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    )
+    timestamp: str = Field(default_factory=lambda: datetime.now(datetime.UTC))
     author: PublicKeyHexStr
 
 

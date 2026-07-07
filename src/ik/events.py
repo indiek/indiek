@@ -68,8 +68,7 @@ def write_event(event: EventModel, signing_key, arc: Archive):
     event_hash = get_canonical_hash(event)
 
     # Extract date from event header
-    ts_str = event.header.timestamp.replace("Z", "+00:00")
-    ts = datetime.fromisoformat(ts_str)
+    ts = event.header.timestamp
 
     # Create path: /archive/events/YYYY/MM/DD/
     dir_path = os.path.join(arc.event_log.path_event_log, ts.strftime("%Y/%m/%d"))
