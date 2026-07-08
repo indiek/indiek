@@ -79,6 +79,9 @@ def run(archive):
         "Timestamp": "header.timestamp",
         "Event Type": "body.event_type",
         "Author": "header.author",
+        "Meta Node ID": "body.node_id",
+        "Tag Name": "body.name",
+        "Tag Description": "body.description",
     }
 
     print_events_table(archive.event_log, low_columns, "Events Log")
