@@ -110,21 +110,40 @@ class Archive:
     def __init__(
         self,
         event_log: InfraEventLog,
+        meta_event_log: InfraEventLog,
         blob_store: InfraBlobStore,
-        check_integrity: bool = True,
     ):
+        """An archive to manage the event log, the meta event log and the data
+
+        It is intentional to dissociate blob store instantiation
+        from event log instantiation, because on some infrastructure
+        the blob store and the event log may live in different locations
+
+        Args:
+            event_log (InfraEventLog): The event log
+            blob_store (InfraBlobStore): The blob store
+            check_integrity (bool, optional): _description_. Defaults to True.
+        """
+        self.meta_event_log = meta_event_log
         self.event_log = event_log
         self.blob_store = blob_store
         self.last_event_hash_: str | None = None
+        self.last_meta_event_hash_: str | None = None
         self.nevents_ = None
-        if check_integrity:
-            self.last_event_hash_, self.nevents_ = self.check_archive_integrity()
+        self.n_meta_events_ = None
+        self.last_event_hash_, self.nevents_ = self.check_archive_integrity(
+            self.event_log
+        )
+        self.last_meta_event_hash_, self.n_meta_events_ = self.check_archive_integrity(
+            self.meta_event_log
+        )
+        print("ARCHIVE INTEGRITY VERIFIED")
 
-    def check_archive_integrity(self) -> Tuple[str, int]:
+    def check_archive_integrity(self, event_log) -> Tuple[str, int]:
         # TODO: currently doesn't check public keys against MANIFEST
         real_prev_hash = None  # for scenario where event log is empty
         ecount = 0
-        for ecount, event in enumerate(self.event_log):
+        for ecount, event in enumerate(event_log):
             # 1. check that the stored previous hash matches the real previous hash
             if ecount:  # nothing to check for genesis event
                 stored_prev_hash = event["header"]["prev_hash"]
@@ -144,7 +163,6 @@ class Archive:
             # prepare for next iteration
             real_prev_hash = get_canonical_hash(event).hex()
 
-        print("ARCHIVE INTEGRITY VERIFIED")
         return real_prev_hash, ecount + int(real_prev_hash is not None)
 
     def verify_blob_on_disk(self, blob_hash):

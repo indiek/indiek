@@ -2,7 +2,7 @@ from ik.models import MediaType
 from ik.events import create_vertex, create_event, write_event
 
 
-def run(node_content: str, curr_public_key, curr_signing_key, archive):
+def run(*, node_content: str, curr_public_key, curr_signing_key, archive):
     # TODO: make this user-controllable when the time comes
     media_type = MediaType.TEXT_PLAIN
 

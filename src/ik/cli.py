@@ -6,17 +6,9 @@ from ik.signing import get_signing_key
 from ik.blob import InfraBlobStore, InfraEventLog, Archive
 import ik.create_node as create_node
 import ik.create_edge as create_edge
+import ik.create_edge_tag as create_edge_tag
 import ik.read as read
 import ik.export as export
-
-
-def dummy_blob_resolver(blob_hash: str) -> str:
-    """
-    Example resolver. In reality, you'd parse the hash,
-    navigate to archive/blobs/... and read the text file.
-    """
-    # Just for demonstration:
-    return "this is some content"
 
 
 def main():
@@ -44,6 +36,17 @@ def main():
     )
     edge_parser.add_argument("--source-node", required=True, help="ID of source node")
     edge_parser.add_argument("--target-node", required=True, help="ID of target node")
+
+    # TODO: create_edge_tag & create_node_tag commands, with tag name and description
+    edge_tag_parser = subparsers.add_parser(
+        "create_edge_tag", help="Create a tag for edges"
+    )
+    edge_tag_parser.add_argument("--name", required=True, help="Tag Name")
+    edge_tag_parser.add_argument("--description", required=True, help="Tag Description")
+
+    tag_parser = subparsers.add_parser("tag", help="Create a tag for edges")
+    tag_parser.add_argument("--tag", required=True, help="Tag Name")
+    tag_parser.add_argument("--id", required=True, help="ID of edge or node to tag")
 
     # Command: $ ik read
     subparsers.add_parser("read", help="Read data")
@@ -83,10 +86,13 @@ def main():
     rootp = "/Users/adrianradillo/prog/indiek/public_archive/archive/"
     infra_blob = InfraBlobStore(archive_root=rootp)
     elog = InfraEventLog(rootp)
-    archive = Archive(elog, infra_blob)
-    print(f"THE ARCHIVE AT {rootp} HAS {archive.nevents_} EVENTS")
+    meta_log = InfraEventLog(os.path.join(rootp, "meta"))
+    archive = Archive(elog, meta_log, infra_blob)
+    print(
+        f"THE ARCHIVE AT {rootp} HAS {archive.nevents_} EVENTS and {archive.n_meta_events_} META EVENTS"
+    )
 
-    if args.command in {"create_node", "create_edge"}:
+    if args.command in {"create_node", "create_edge", "create_edge_tag"}:
         # TODO: for the blob writing events; add a cleaning last step to erase written blob if event persistence failed
         if args.author == "ANONYMOUS1":
             curr_signing_key = anonymous_1_signing_key
@@ -99,7 +105,12 @@ def main():
 
     # Route to your scripts based on the command
     if args.command == "create_node":
-        create_node.run(args.content, curr_public_key, curr_signing_key, archive)
+        create_node.run(
+            node_content=args.content,
+            curr_public_key=curr_public_key,
+            curr_signing_key=curr_signing_key,
+            archive=archive,
+        )
 
     elif args.command == "create_edge":
         create_edge.run(
@@ -109,6 +120,14 @@ def main():
             curr_public_key,
             curr_signing_key,
             archive,
+        )
+    elif args.command == "create_edge_tag":
+        create_edge_tag.run(
+            tag_name=args.name,
+            tag_description=args.description,
+            curr_public_key=curr_public_key,
+            curr_signing_key=curr_signing_key,
+            archive=archive,
         )
 
     elif args.command == "read":

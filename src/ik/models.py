@@ -22,11 +22,43 @@ class EventType(str, Enum):
     CREATE_EDGE = "create_edge"
 
 
+class MetaEventType(str, Enum):
+    CREATE_EDGE_TAG = "create_edge_tag"  # node in meta network
+    CREATE_NODE_TAG = "create_node_tag"  # node in meta network
+    CREATE_EDGE_REPRESENTATION = "create_edge_representation"  # node in meta network
+    CREATE_NODE_REPRESENTATION = "create_node_representation"  # node in meta network
+    SET_EDGE_TAG = "set_edge_tag"  # edge in meta network
+    SET_NODE_TAG = "set_node_tag"  # edge in meta network
+
+
 class EventHeader(BaseModel):
     version: str = "1.0"
     prev_hash: Sha256HexStr | None  # String and hex validation applied automatically
     timestamp: dt = Field(default_factory=lambda: dt.now(datetime.UTC))
     author: PublicKeyHexStr
+
+
+MetaEventHeader = EventHeader
+
+
+class MetaEventBody(BaseModel, ABC):
+    event_type: MetaEventType
+
+
+class MetaNode(MetaEventBody):
+    # should not be instantiated, only subclassed
+    node_id: UUID = Field(default_factory=uuid7)
+
+
+class Tag(MetaNode):
+    body_type: Literal["tag"] = "tag"
+    name: str
+    description: str
+
+
+class MetaRepresentation(MetaNode):
+    body_type: Literal["representation"] = "representation"
+    underlying_id: UUID
 
 
 class EventBody(BaseModel, ABC):
@@ -60,4 +92,10 @@ class Edge(EventBody):
 class EventModel(BaseModel):
     header: EventHeader
     body: Union[Node, Edge] = Field(discriminator="body_type")
+    signature: str | None = None
+
+
+class MetaEventModel(BaseModel):
+    header: MetaEventHeader
+    body: Union[MetaRepresentation, Tag] = Field(discriminator="body_type")
     signature: str | None = None
