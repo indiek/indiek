@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import hashlib
 from ik.signing import verify_signature, get_canonical_hash
-from ik.models import MediaType, EventType, MetaEventType
+from ik.models import MediaType, EventType, MetaEventType, EventModel, MetaEventModel
 
 
 class IntegrityError(Exception):
@@ -140,6 +140,39 @@ class Archive:
         print("ARCHIVE INTEGRITY VERIFIED")
         self.human_to_machine_id_ = self._generate_human_friendly_ids()
         self.machine_to_human_id_ = {v: k for k, v in self.human_to_machine_id_.items()}
+
+    def update_id_mappings(self, event: EventModel | MetaEventModel):
+        def get_latest_int(pref):
+            return max(
+                map(
+                    lambda s: int(s[len(pref) :]) if s.startswith(pref) else 0,
+                    self.human_to_machine_id_.keys(),
+                )
+            )
+
+        if isinstance(event, EventModel):
+            prefix = "e"
+        elif isinstance(event, MetaEventModel):
+            prefix = "m"
+        else:
+            raise ValueError("Invalid event type")
+        if event.body.event_type in {
+            EventType.CREATE_EDGE,
+            EventType.CREATE_NODE,
+            MetaEventType.CREATE_EDGE_TAG,
+            MetaEventType.CREATE_NODE_TAG,
+            MetaEventType.CREATE_EDGE_REPRESENTATION,
+            MetaEventType.CREATE_NODE_REPRESENTATION,
+            MetaEventType.SET_EDGE_TAG,
+            MetaEventType.SET_NODE_TAG,
+        }:
+            try:
+                item_id = str(event.body.node_id)
+            except AttributeError:
+                item_id = str(event.body.edge_id)
+            human_id = prefix + str(get_latest_int(prefix) + 1)
+            self.human_to_machine_id_[human_id] = item_id
+            self.machine_to_human_id_[item_id] = human_id
 
     def _generate_human_friendly_ids(self):
         """Apply eX and mX patterns to graph items

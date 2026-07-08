@@ -127,6 +127,7 @@ def write_event(event: EventModel, signing_key, arc: Archive):
         f.write(event_json_str + "\n")
     print(f"EVENT {event_json_str} WRITTEN TO {file_path}")
     arc.last_event_hash_ = event_hash
+    arc.update_id_mappings(event)
     arc.nevents_ += 1
 
 
@@ -149,4 +150,5 @@ def write_meta_event(event: MetaEventModel, signing_key, arc: Archive):
         f.write(event_json_str + "\n")
     print(f"META EVENT {event_json_str} WRITTEN TO {file_path}")
     arc.last_meta_event_hash_ = event_hash
+    arc.update_id_mappings(event)
     arc.n_meta_events_ += 1

@@ -7,6 +7,7 @@ from ik.blob import InfraBlobStore, InfraEventLog, Archive
 import ik.create_node as create_node
 import ik.create_edge as create_edge
 import ik.create_edge_tag as create_edge_tag
+import ik.create_node_tag as create_node_tag
 import ik.read as read
 import ik.export as export
 
@@ -44,6 +45,13 @@ def main():
     edge_tag_parser.add_argument("--name", required=True, help="Tag Name")
     edge_tag_parser.add_argument("--description", required=True, help="Tag Description")
     edge_tag_parser.add_argument("--author", required=True, help="Author standard name")
+
+    node_tag_parser = subparsers.add_parser(
+        "create_node_tag", help="Create a tag for nodes"
+    )
+    node_tag_parser.add_argument("--name", required=True, help="Tag Name")
+    node_tag_parser.add_argument("--description", required=True, help="Tag Description")
+    node_tag_parser.add_argument("--author", required=True, help="Author standard name")
 
     tag_parser = subparsers.add_parser("tag", help="Create a tag for edges")
     tag_parser.add_argument("--tag", required=True, help="Tag Name")
@@ -93,7 +101,12 @@ def main():
         f"THE ARCHIVE AT {rootp} HAS {archive.nevents_} EVENTS and {archive.n_meta_events_} META EVENTS"
     )
 
-    if args.command in {"create_node", "create_edge", "create_edge_tag"}:
+    if args.command in {
+        "create_node",
+        "create_edge",
+        "create_edge_tag",
+        "create_node_tag",
+    }:
         # TODO: for the blob writing events; add a cleaning last step to erase written blob if event persistence failed
         if args.author == "ANONYMOUS1":
             curr_signing_key = anonymous_1_signing_key
@@ -124,6 +137,14 @@ def main():
         )
     elif args.command == "create_edge_tag":
         create_edge_tag.run(
+            tag_name=args.name,
+            tag_description=args.description,
+            curr_public_key=curr_public_key,
+            curr_signing_key=curr_signing_key,
+            archive=archive,
+        )
+    elif args.command == "create_node_tag":
+        create_node_tag.run(
             tag_name=args.name,
             tag_description=args.description,
             curr_public_key=curr_public_key,

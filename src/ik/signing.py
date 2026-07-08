@@ -57,5 +57,5 @@ def verify_signature(body, signature_hex, public_key_hex):
         msg_hash = get_canonical_hash(body)
         verify_key.verify(msg_hash, bytes.fromhex(signature_hex))
         return True
-    except (nacl.exceptions.BadSignatureError, ValueError):
+    except nacl.exceptions.BadSignatureError, ValueError:
         return False
