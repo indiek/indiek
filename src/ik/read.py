@@ -1,6 +1,7 @@
 from typing import Dict, Any, Iterable
 from rich.console import Console
 from rich.table import Table
+from ik.blob import ArchiveIndex
 
 
 def get_nested_value(data: Dict[str, Any], path: str) -> str:
@@ -26,7 +27,7 @@ def print_events_table(
     id_mapping: Dict,
 ) -> None:
     """
-    Prints a beautiful table to stdout.
+    Prints a table to stdout.
 
     :param events: List of event dictionaries.
     :param columns_map: A dictionary mapping 'Column Display Name' to 'json.path.key'.
@@ -60,7 +61,7 @@ def print_events_table(
     console.print(table)
 
 
-def run(archive):
+def run(archive_idx: ArchiveIndex):
     # # TODO: use blob_resolver from blob.py
     # for event_dict in archive.event_log:
     #     pprint(event_dict)
@@ -91,11 +92,15 @@ def run(archive):
     }
 
     print_events_table(
-        archive.event_log, low_columns, "Events Log", archive.machine_to_human_id_
+        archive_idx.arc.event_log,
+        low_columns,
+        "Events Log",
+        archive_idx.machine_to_human_id_,
     )
+    # breakpoint()
     print_events_table(
-        archive.meta_event_log,
+        archive_idx.arc.meta_event_log,
         high_columns,
         "Meta Events Log",
-        archive.machine_to_human_id_,
+        archive_idx.machine_to_human_id_,
     )

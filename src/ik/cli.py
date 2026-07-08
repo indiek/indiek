@@ -3,11 +3,12 @@ import os
 import nacl
 from dotenv import load_dotenv
 from ik.signing import get_signing_key
-from ik.blob import InfraBlobStore, InfraEventLog, Archive
+from ik.blob import InfraBlobStore, InfraEventLog, Archive, ArchiveIndex
 import ik.create_node as create_node
 import ik.create_edge as create_edge
 import ik.create_edge_tag as create_edge_tag
 import ik.create_node_tag as create_node_tag
+import ik.set_tag as set_tag
 import ik.read as read
 import ik.export as export
 
@@ -35,10 +36,17 @@ def main():
     edge_parser.add_argument(
         "--content", required=True, help="Text content attached to edge"
     )
-    edge_parser.add_argument("--source-node", required=True, help="ID of source node")
-    edge_parser.add_argument("--target-node", required=True, help="ID of target node")
+    edge_parser.add_argument(
+        "--source-node",
+        required=True,
+        help="ID of source node (possibly human-friendly)",
+    )
+    edge_parser.add_argument(
+        "--target-node",
+        required=True,
+        help="ID of target node (possibly human-friendly)",
+    )
 
-    # TODO: create_edge_tag & create_node_tag commands, with tag name and description
     edge_tag_parser = subparsers.add_parser(
         "create_edge_tag", help="Create a tag for edges"
     )
@@ -53,9 +61,17 @@ def main():
     node_tag_parser.add_argument("--description", required=True, help="Tag Description")
     node_tag_parser.add_argument("--author", required=True, help="Author standard name")
 
-    tag_parser = subparsers.add_parser("tag", help="Create a tag for edges")
-    tag_parser.add_argument("--tag", required=True, help="Tag Name")
-    tag_parser.add_argument("--id", required=True, help="ID of edge or node to tag")
+    tag_parser = subparsers.add_parser("set_tag", help="Set a tag for an edge or node")
+    tag_parser.add_argument(
+        "--tag",
+        required=True,
+        help="Tag ID (possibly human friendly ID). This is the source node for the edge in the meta network",
+    )
+    tag_parser.add_argument(
+        "--id",
+        required=True,
+        help="ID of edge or node to tag (possibly human friendly). This is the target node for the edge in the meta network.",
+    )
 
     # Command: $ ik read
     subparsers.add_parser("read", help="Read data")
@@ -67,6 +83,8 @@ def main():
     export_parser.add_argument(
         "--output-path", required=True, help="Path to file to be persisted to disk"
     )
+    # TODO: add tag filtering capability
+
     # Parse the arguments from the terminal
     args = parser.parse_args()
 
@@ -97,6 +115,7 @@ def main():
     elog = InfraEventLog(rootp)
     meta_log = InfraEventLog(os.path.join(rootp, "meta"))
     archive = Archive(elog, meta_log, infra_blob)
+    archive_index = ArchiveIndex(archive)
     print(
         f"THE ARCHIVE AT {rootp} HAS {archive.nevents_} EVENTS and {archive.n_meta_events_} META EVENTS"
     )
@@ -106,6 +125,7 @@ def main():
         "create_edge",
         "create_edge_tag",
         "create_node_tag",
+        "set_tag",
     }:
         # TODO: for the blob writing events; add a cleaning last step to erase written blob if event persistence failed
         if args.author == "ANONYMOUS1":
@@ -151,9 +171,16 @@ def main():
             curr_signing_key=curr_signing_key,
             archive=archive,
         )
-
+    elif args.command == "set_tag":
+        set_tag.run(
+            args.tag,
+            args.id,
+            curr_public_key,
+            curr_signing_key,
+            archive,
+        )
     elif args.command == "read":
-        read.run(archive)
+        read.run(archive_index)
     elif args.command == "export":
         export.run(archive, args.output_path)
 

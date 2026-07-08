@@ -3,6 +3,7 @@
 from typing import Any, Tuple
 import os
 import json
+from uuid import UUID
 from pathlib import Path
 import hashlib
 from ik.signing import verify_signature, get_canonical_hash
@@ -129,8 +130,8 @@ class Archive:
         self.blob_store = blob_store
         self.last_event_hash_: str | None = None
         self.last_meta_event_hash_: str | None = None
-        self.nevents_ = None
-        self.n_meta_events_ = None
+        self.n_meta_events_: int | None = None
+        self.nevents_: int | None = None
         self.last_event_hash_, self.nevents_ = self.check_archive_integrity(
             self.event_log
         )
@@ -138,8 +139,135 @@ class Archive:
             self.meta_event_log
         )
         print("ARCHIVE INTEGRITY VERIFIED")
-        self.human_to_machine_id_ = self._generate_human_friendly_ids()
+
+    def check_archive_integrity(self, event_log) -> Tuple[str, int]:
+        # TODO: currently doesn't check public keys against MANIFEST
+        real_prev_hash = None  # for scenario where event log is empty
+        ecount = 0
+        for ecount, event in enumerate(event_log):
+            # 1. check that the stored previous hash matches the real previous hash
+            if ecount:  # nothing to check for genesis event
+                stored_prev_hash = event["header"]["prev_hash"]
+                if real_prev_hash != stored_prev_hash:
+                    raise IntegrityError("Chain broken!")
+
+            # 2. Check Signature
+            public_key_hex = event["header"]["author"]
+            if not verify_signature(event["body"], event["signature"], public_key_hex):
+                raise IntegrityError("Data tampered or bad author!")
+
+            # 3. Check Blobs (if applicable)
+            if "blob_hash" in event["body"]:
+                if not self.verify_blob_on_disk(event["body"]["blob_hash"]):
+                    raise IntegrityError("File corrupted or missing!")
+
+            # prepare for next iteration
+            real_prev_hash = get_canonical_hash(event).hex()
+
+        return real_prev_hash, ecount + int(real_prev_hash is not None)
+
+    def verify_blob_on_disk(self, blob_hash):  # TODO: delegate this to InfraBlobStore
+        binary_data = self.blob_store.load_bin_blob(blob_hash)
+        real_hash = self.blob_store._get_blob_hash(binary_data)
+        given = blob_hash[len(self.blob_store.blob_hash_prefix) :]
+        return given == real_hash
+
+
+class ArchiveIndex:
+    """Simple class to quickly inspect and browse an archive."""
+
+    def __init__(self, verified_archive: Archive):
+        """Create a simple index for the archive.
+
+        Args:
+            verified_archive (Archive): The archive is assumed to have been verified
+        """
+        self.arc = verified_archive
+        self.human_to_machine_id_, self.id_info_ = self._build_index()
         self.machine_to_human_id_ = {v: k for k, v in self.human_to_machine_id_.items()}
+
+    @property
+    def last_event_hash_(self):
+        return self.arc.last_event_hash_
+
+    @property
+    def nevents_(self):
+        return self.arc.nevents_
+
+    @property
+    def last_meta_event_hash_(self):
+        return self.arc.last_meta_event_hash_
+
+    @property
+    def n_meta_events_(self):
+        return self.arc.n_meta_events_
+
+    def _build_index(self):
+        idmap = {}
+        id_info = {}
+        """Apply eX and mX patterns to graph items
+
+        With X an integer growing in chronological order,
+        eX denotes a node or edge
+        mX denotes a node or edge in the meta network
+        """
+
+        item_count = 0
+        print("...building index looping through events...")
+        for event in self.arc.event_log:
+            if event["body"]["event_type"] in {
+                EventType.CREATE_EDGE.value,
+                EventType.CREATE_NODE.value,
+            }:
+                item_count += 1
+                try:
+                    item_id = event["body"]["node_id"]
+                    is_edge = False
+                except KeyError:
+                    item_id = event["body"]["edge_id"]
+                    is_edge = True
+                idmap["e" + str(item_count)] = item_id
+                id_info[UUID(item_id)] = {
+                    "is_meta": False,
+                    "is_edge": is_edge,
+                    "author": event["header"]["author"],
+                }
+            print(f"\n *** {item_count=}  {item_id=}")
+
+        item_count = 0
+        print("...building index looping through meta events...")
+        for meta_event in self.arc.meta_event_log:
+            if meta_event["body"]["event_type"] in {
+                MetaEventType.CREATE_EDGE_TAG.value,
+                MetaEventType.CREATE_NODE_TAG.value,
+                MetaEventType.CREATE_EDGE_REPRESENTATION.value,
+                MetaEventType.CREATE_NODE_REPRESENTATION.value,
+                MetaEventType.SET_EDGE_TAG.value,
+                MetaEventType.SET_NODE_TAG.value,
+            }:
+                item_count += 1
+                try:
+                    item_id = meta_event["body"]["node_id"]
+                    is_edge = False
+                except KeyError:
+                    item_id = meta_event["body"]["edge_id"]
+                    is_edge = True
+                idmap["m" + str(item_count)] = item_id
+                id_info[UUID(item_id)] = {
+                    "is_meta": True,
+                    "is_edge": is_edge,
+                    "is_edge_tag": meta_event["body"]["event_type"]
+                    == MetaEventType.CREATE_EDGE_TAG.value,
+                    "is_node_tag": meta_event["body"]["event_type"]
+                    == MetaEventType.CREATE_NODE_TAG.value,
+                    "is_edge_representation": meta_event["body"]["event_type"]
+                    == MetaEventType.CREATE_EDGE_REPRESENTATION.value,
+                    "is_node_representation": meta_event["body"]["event_type"]
+                    == MetaEventType.CREATE_NODE_REPRESENTATION.value,
+                    "author": meta_event["header"]["author"],
+                }
+            print(f"\n *** {item_count=}  {item_id=}")
+        return idmap, id_info
 
     def update_id_mappings(self, event: EventModel | MetaEventModel):
         def get_latest_int(pref):
@@ -174,73 +302,12 @@ class Archive:
             self.human_to_machine_id_[human_id] = item_id
             self.machine_to_human_id_[item_id] = human_id
 
-    def _generate_human_friendly_ids(self):
-        """Apply eX and mX patterns to graph items
+    def assert_node_is_tag(self, node_id: UUID) -> None:
+        assert self.id_info_[node_id]["is_meta"]
+        assert (
+            self.id_info_[node_id]["is_edge_tag"]
+            or self.id_info_[node_id]["is_node_tag"]
+        )
 
-        With X an integer growing in chronological order,
-        eX denotes a node or edge
-        mX denotes a node or edge in the meta network
-        """
-        item_count = 0
-        idmap = {}
-        for event in self.event_log:
-            if event["body"]["event_type"] in {
-                EventType.CREATE_EDGE.value,
-                EventType.CREATE_NODE.value,
-            }:
-                item_count += 1
-                try:
-                    item_id = event["body"]["node_id"]
-                except KeyError:
-                    item_id = event["body"]["edge_id"]
-                idmap["e" + str(item_count)] = item_id
-
-        item_count = 0
-        for meta_event in self.meta_event_log:
-            if meta_event["body"]["event_type"] in {
-                MetaEventType.CREATE_EDGE_TAG.value,
-                MetaEventType.CREATE_NODE_TAG.value,
-                MetaEventType.CREATE_EDGE_REPRESENTATION.value,
-                MetaEventType.CREATE_NODE_REPRESENTATION.value,
-                MetaEventType.SET_EDGE_TAG.value,
-                MetaEventType.SET_NODE_TAG.value,
-            }:
-                item_count += 1
-                try:
-                    item_id = meta_event["body"]["node_id"]
-                except KeyError:
-                    item_id = meta_event["body"]["edge_id"]
-                idmap["m" + str(item_count)] = item_id
-        return idmap
-
-    def check_archive_integrity(self, event_log) -> Tuple[str, int]:
-        # TODO: currently doesn't check public keys against MANIFEST
-        real_prev_hash = None  # for scenario where event log is empty
-        ecount = 0
-        for ecount, event in enumerate(event_log):
-            # 1. check that the stored previous hash matches the real previous hash
-            if ecount:  # nothing to check for genesis event
-                stored_prev_hash = event["header"]["prev_hash"]
-                if real_prev_hash != stored_prev_hash:
-                    raise IntegrityError("Chain broken!")
-
-            # 2. Check Signature
-            public_key_hex = event["header"]["author"]
-            if not verify_signature(event["body"], event["signature"], public_key_hex):
-                raise IntegrityError("Data tampered or bad author!")
-
-            # 3. Check Blobs (if applicable)
-            if "blob_hash" in event["body"]:
-                if not self.verify_blob_on_disk(event["body"]["blob_hash"]):
-                    raise IntegrityError("File corrupted or missing!")
-
-            # prepare for next iteration
-            real_prev_hash = get_canonical_hash(event).hex()
-
-        return real_prev_hash, ecount + int(real_prev_hash is not None)
-
-    def verify_blob_on_disk(self, blob_hash):
-        binary_data = self.blob_store.load_bin_blob(blob_hash)
-        real_hash = self.blob_store._get_blob_hash(binary_data)
-        given = blob_hash[len(self.blob_store.blob_hash_prefix) :]
-        return given == real_hash
+    def confirm_tag_authorship(self, pubkey: str, node_id: UUID):
+        assert pubkey == self.id_info_[node_id]["author"]

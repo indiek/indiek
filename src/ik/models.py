@@ -50,6 +50,13 @@ class MetaNode(MetaEventBody):
     node_id: UUID = Field(default_factory=uuid7)
 
 
+class MetaEdge(MetaEventBody):
+    body_type: Literal["edge"] = "edge"
+    edge_id: UUID = Field(default_factory=uuid7)
+    source_node: UUID
+    target_node: UUID
+
+
 class Tag(MetaNode):
     body_type: Literal["tag"] = "tag"
     name: str
