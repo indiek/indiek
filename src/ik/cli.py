@@ -43,6 +43,7 @@ def main():
     )
     edge_tag_parser.add_argument("--name", required=True, help="Tag Name")
     edge_tag_parser.add_argument("--description", required=True, help="Tag Description")
+    edge_tag_parser.add_argument("--author", required=True, help="Author standard name")
 
     tag_parser = subparsers.add_parser("tag", help="Create a tag for edges")
     tag_parser.add_argument("--tag", required=True, help="Tag Name")
