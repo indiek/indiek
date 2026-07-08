@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import hashlib
 from ik.signing import verify_signature, get_canonical_hash
-from ik.models import MediaType
+from ik.models import MediaType, EventType, MetaEventType
 
 
 class IntegrityError(Exception):
@@ -138,6 +138,47 @@ class Archive:
             self.meta_event_log
         )
         print("ARCHIVE INTEGRITY VERIFIED")
+        self.human_to_machine_id_ = self._generate_human_friendly_ids()
+        self.machine_to_human_id_ = {v: k for k, v in self.human_to_machine_id_.items()}
+
+    def _generate_human_friendly_ids(self):
+        """Apply eX and mX patterns to graph items
+
+        With X an integer growing in chronological order,
+        eX denotes a node or edge
+        mX denotes a node or edge in the meta network
+        """
+        item_count = 0
+        idmap = {}
+        for event in self.event_log:
+            if event["body"]["event_type"] in {
+                EventType.CREATE_EDGE.value,
+                EventType.CREATE_NODE.value,
+            }:
+                item_count += 1
+                try:
+                    item_id = event["body"]["node_id"]
+                except KeyError:
+                    item_id = event["body"]["edge_id"]
+                idmap["e" + str(item_count)] = item_id
+
+        item_count = 0
+        for meta_event in self.meta_event_log:
+            if meta_event["body"]["event_type"] in {
+                MetaEventType.CREATE_EDGE_TAG.value,
+                MetaEventType.CREATE_NODE_TAG.value,
+                MetaEventType.CREATE_EDGE_REPRESENTATION.value,
+                MetaEventType.CREATE_NODE_REPRESENTATION.value,
+                MetaEventType.SET_EDGE_TAG.value,
+                MetaEventType.SET_NODE_TAG.value,
+            }:
+                item_count += 1
+                try:
+                    item_id = meta_event["body"]["node_id"]
+                except KeyError:
+                    item_id = meta_event["body"]["edge_id"]
+                idmap["m" + str(item_count)] = item_id
+        return idmap
 
     def check_archive_integrity(self, event_log) -> Tuple[str, int]:
         # TODO: currently doesn't check public keys against MANIFEST
