@@ -12,6 +12,7 @@ dependencies = [
     "python-dotenv",
     "pydantic",
     "networkx>=3.6.1",
+    "rich>=15.0.0",
 ]
 
 [project.scripts]
