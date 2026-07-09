@@ -140,7 +140,7 @@ def main():
             tag_description=args.description,
             curr_public_key=curr_public_key,
             curr_signing_key=curr_signing_key,
-            archive_index=archive_index,
+            archive_idx=archive_index,
         )
     elif args.command == "set_tag":
         set_tag.run(
