@@ -140,6 +140,9 @@ class Archive:
             self.meta_event_log
         )
         print("ARCHIVE INTEGRITY VERIFIED")
+        print(
+            f"THE ARCHIVE AT HAS {self.nevents_} EVENTS and {self.n_meta_events_} META EVENTS"
+        )
 
     def check_archive_integrity(self, event_log) -> Tuple[str, int]:
         # TODO: currently doesn't check public keys against MANIFEST

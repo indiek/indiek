@@ -87,8 +87,12 @@ def run(archive_idx: ArchiveIndex):
         "Event Type": "body.event_type",
         "Author": "header.author",
         "Meta Node ID": "body.node_id",
+        "Meta Edge ID": "body.edge_id",
         "Tag Name": "body.name",
         "Tag Description": "body.description",
+        "Meta Source Node": "body.source_node",
+        "Meta Target Node": "body.target_node",
+        "Underlying ID": "body.underlying_id",
     }
 
     print_events_table(

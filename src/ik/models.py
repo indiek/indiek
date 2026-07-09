@@ -98,11 +98,11 @@ class Edge(EventBody):
 
 class EventModel(BaseModel):
     header: EventHeader
-    body: Union[Node, Edge] = Field(discriminator="body_type")
+    body: Node | Edge = Field(discriminator="body_type")
     signature: str | None = None
 
 
 class MetaEventModel(BaseModel):
     header: MetaEventHeader
-    body: Union[MetaRepresentation, Tag] = Field(discriminator="body_type")
+    body: MetaRepresentation | Tag | MetaEdge = Field(discriminator="body_type")
     signature: str | None = None

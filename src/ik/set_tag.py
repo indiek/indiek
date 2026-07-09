@@ -73,4 +73,3 @@ def run(
     )
 
     write_meta_event(event, curr_signing_key, archive_idx)
-    print(f"ARCHIVE NOW HAS {archive_idx.n_meta_events_} META EVENTS")

@@ -102,9 +102,6 @@ def main():
     meta_log = InfraEventLog(os.path.join(rootp, "meta"))
     archive = Archive(elog, meta_log, infra_blob)
     archive_index = ArchiveIndex(archive)
-    print(
-        f"THE ARCHIVE AT {rootp} HAS {archive.nevents_} EVENTS and {archive.n_meta_events_} META EVENTS"
-    )
 
     # TODO: for the blob writing events; add a cleaning last step to erase written blob if event persistence failed
 
