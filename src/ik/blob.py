@@ -271,12 +271,15 @@ class ArchiveIndex:
 
     def update_id_mappings(self, event: EventModel | MetaEventModel):
         def get_latest_int(pref):
-            return max(
-                map(
-                    lambda s: int(s[len(pref) :]) if s.startswith(pref) else 0,
-                    self.human_to_machine_id_.keys(),
+            if len(self.human_to_machine_id_.keys()):
+                return max(
+                    map(
+                        lambda s: int(s[len(pref) :]) if s.startswith(pref) else 0,
+                        self.human_to_machine_id_.keys(),
+                    )
                 )
-            )
+            else:
+                return 0
 
         if isinstance(event, EventModel):
             prefix = "e"

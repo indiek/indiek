@@ -114,7 +114,7 @@ def main():
             node_content=args.content,
             curr_public_key=curr_public_key,
             curr_signing_key=curr_signing_key,
-            archive=archive,
+            archive_idx=archive_index,
         )
 
     elif args.command == "create_edge":
