@@ -19,4 +19,3 @@ def run(*, node_content: str, curr_public_key, curr_signing_key, archive_idx):
     event = create_event(body=body, public_key=curr_public_key, archive=archive_idx)
 
     write_event(event, curr_signing_key, archive_idx)
-    print(f"ARCHIVE NOW HAS {archive_idx.nevents_} EVENTS")

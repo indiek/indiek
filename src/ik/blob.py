@@ -132,6 +132,7 @@ class Archive:
         self.last_meta_event_hash_: str | None = None
         self.n_meta_events_: int | None = None
         self.nevents_: int | None = None
+        # TODO: consolidate the two subsequent method calls
         self.last_event_hash_, self.nevents_ = self.check_archive_integrity(
             self.event_log
         )
@@ -142,6 +143,8 @@ class Archive:
 
     def check_archive_integrity(self, event_log) -> Tuple[str, int]:
         # TODO: currently doesn't check public keys against MANIFEST
+        # TODO: if unreferenced blobs, at least mention it as a warning...
+        # TODO: if dangling meta nodes with lost underlying items, throw an error
         real_prev_hash = None  # for scenario where event log is empty
         ecount = 0
         for ecount, event in enumerate(event_log):
@@ -296,6 +299,7 @@ class ArchiveIndex:
         self.repr_id_to_underlying_id_ = meta_to_base_id
 
     def update_id_mappings(self, event: EventModel | MetaEventModel):
+        # TODO: Consolidate with self.build_index() to reduce code redundancy
         def get_latest_int(pref):
             if len(self.human_to_machine_id_.keys()):
                 return max(

@@ -6,7 +6,7 @@ from ik.events import (
     create_representation,
 )
 from ik.models import MetaEventType
-from ik.blob import ArchiveIndex
+from ik.blob import ArchiveIndex, Archive
 
 
 def run(
@@ -33,9 +33,9 @@ def run(
     # now the underlying target is a str corresponding to a proper UUID
     queried_uuid = UUID(underlying_target)
     # confirm the underlying target is an existing ID from the base network
-    assert queried_uuid in archive_idx.id_info_.keys(), (
-        "UUID is not part of any network (neither base nor meta)"
-    )
+    assert (
+        queried_uuid in archive_idx.id_info_.keys()
+    ), "UUID is not part of any network (neither base nor meta)"
     item_info = archive_idx.id_info_[queried_uuid]
     assert not item_info["is_meta"], "UUID should not be an item from the meta network"
     if item_info["is_edge"]:
@@ -52,6 +52,13 @@ def run(
             archive_index=archive_idx,
             signing_key=curr_signing_key,
         )
+        print("...Refreshing archive and index")
+        refreshed_archive = Archive(
+            event_log=archive_idx.arc.event_log,
+            meta_event_log=archive_idx.arc.meta_event_log,
+            blob_store=archive_idx.arc.blob_store,
+        )
+        archive_idx = ArchiveIndex(refreshed_archive)
     else:
         edge_target: UUID = archive_idx.underlying_id_to_repr_id_[queried_uuid]
     print("...Now creating the meta edge")

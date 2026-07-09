@@ -15,5 +15,3 @@ def run(*, tag_name, tag_description, curr_public_key, curr_signing_key, archive
         body=body, public_key=curr_public_key, archive_idx=archive_idx
     )
     write_meta_event(event, curr_signing_key, archive_idx)
-
-    print(f"ARCHIVE NOW HAS {archive_idx.n_meta_events_} META EVENTS")

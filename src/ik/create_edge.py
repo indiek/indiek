@@ -33,4 +33,3 @@ def run(
     event = create_event(body=body, public_key=curr_public_key, archive=archive_idx.arc)
 
     write_event(event, curr_signing_key, arc_idx=archive_idx)
-    print(f"ARCHIVE NOW HAS {archive_idx.nevents_} EVENTS")
