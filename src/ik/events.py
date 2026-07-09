@@ -1,6 +1,6 @@
 import os
 from uuid import UUID
-from ik.signing import sign_event, get_canonical_hash
+from ik.signing import sign_event
 from ik.blob import Archive, ArchiveIndex
 from ik.models import (
     EventModel,
@@ -184,14 +184,14 @@ def create_meta_edge(
     try:
         target_info = meta_nodes[target_id]
         if is_node_tag:
-            assert target_info[
-                "is_node_representation"
-            ], "A node tag should point to a node representation"
+            assert target_info["is_node_representation"], (
+                "A node tag should point to a node representation"
+            )
             event_type = MetaEventType.SET_NODE_TAG
         if is_edge_tag:
-            assert target_info[
-                "is_edge_representation"
-            ], "An edge tag should point to an edge representation"
+            assert target_info["is_edge_representation"], (
+                "An edge tag should point to an edge representation"
+            )
             event_type = MetaEventType.SET_EDGE_TAG
     except KeyError:
         raise ValueError(f"TARGET NODE {target_id} NOT FOUND IN ARCHIVE'S META NETWORK")
@@ -210,7 +210,6 @@ def sign_unsigned_event(event, signing_key):
 def write_event(event: EventModel, signing_key, arc_idx: ArchiveIndex):
 
     sign_unsigned_event(event, signing_key)
-    event_hash = get_canonical_hash(event)
 
     # Extract date from event header
     ts = event.header.timestamp
@@ -228,15 +227,11 @@ def write_event(event: EventModel, signing_key, arc_idx: ArchiveIndex):
         f.write(event_json_str + "\n")
     print(f"EVENT {event_json_str} WRITTEN TO {file_path}")
     print("****** Rebuild Archive and Index for subsequent work *****")
-    # arc_idx.arc.last_event_hash_ = event_hash
-    # arc_idx.update_id_mappings(event)
-    # arc_idx.arc.nevents_ += 1
 
 
 def write_meta_event(event: MetaEventModel, signing_key, arc_idx: ArchiveIndex):
 
     sign_unsigned_event(event, signing_key)
-    event_hash = get_canonical_hash(event)
 
     # Extract date from event header
     ts = event.header.timestamp
@@ -254,10 +249,3 @@ def write_meta_event(event: MetaEventModel, signing_key, arc_idx: ArchiveIndex):
         f.write(event_json_str + "\n")
     print(f"META EVENT {event_json_str} WRITTEN TO {file_path}")
     print("****** Rebuild Archive and Index for subsequent work *****")
-    # arc_idx.arc.last_meta_event_hash_ = event_hash
-    # arc_idx.update_id_mappings(event)
-    # arc_idx.arc.n_meta_events_ += 1
-    # # if the meta event created a new representation update the mappings
-    # if isinstance(event.body, MetaRepresentation):
-    #     arc_idx.repr_id_to_underlying_id_[event.body.node_id] = event.body.underlying_id
-    #     arc_idx.underlying_id_to_repr_id_[event.body.underlying_id] = event.body.node_id

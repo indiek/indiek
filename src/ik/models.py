@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing_extensions import Annotated, Literal, Union
+from typing_extensions import Annotated, Literal
 from uuid import UUID, uuid7
 from datetime import datetime as dt
 import datetime
