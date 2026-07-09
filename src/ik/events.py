@@ -17,6 +17,34 @@ from ik.models import (
 )
 
 
+def create_representation(
+    *,
+    underlying_uuid_str: str,
+    correct_event: MetaEventType,
+    public_key: str,
+    archive_index: ArchiveIndex,
+    signing_key: str,
+) -> UUID:
+    """Create an event corresponding to representation and write it
+
+    Args:
+        underlying_uuid_str (str): The item ID (node or edge) of an item
+            from the base network
+        correct_event (MetaEventType): either MetaEventType.CREATE_NODE_REPRESENTATION or
+            MetaEventType.CREATE_EDGE_REPRESENTATION
+
+    Returns:
+        UUID: The UUID of the newly created meta node
+    """
+    body: MetaRepresentation = create_meta_vertex(
+        underlying_id=underlying_uuid_str, meta_event_type=correct_event
+    )
+    uuid_to_return = body.node_id
+    meta_event = create_meta_event(body, public_key, archive_index)
+    write_meta_event(meta_event, signing_key, archive_index)
+    return uuid_to_return
+
+
 def create_event(body: Node | Edge, public_key: str, archive: Archive) -> EventModel:
 
     prev_hash = archive.last_event_hash_ if archive.nevents_ else None
@@ -30,7 +58,9 @@ def create_event(body: Node | Edge, public_key: str, archive: Archive) -> EventM
 
 
 def create_meta_event(
-    body: Tag | MetaRepresentation, public_key: str, archive_idx: ArchiveIndex
+    body: Tag | MetaRepresentation | MetaEdge,
+    public_key: str,
+    archive_idx: ArchiveIndex,
 ) -> MetaEventModel:
 
     prev_hash = (
@@ -54,7 +84,10 @@ def create_vertex(blob_hash, data_type, blob_hash_prefix) -> Node:
 
 
 def create_meta_vertex(
-    *, underlying_id: UUID | None = None, tag: Tag | None = None
+    *,
+    underlying_id: UUID | None = None,
+    tag: Tag | None = None,
+    meta_event_type: MetaEventType | None = None,
 ) -> MetaRepresentation | Tag:
     """Creates a node in the dual network.
 
@@ -71,7 +104,9 @@ def create_meta_vertex(
     """
     if tag is None:
         assert underlying_id is not None
-        return MetaRepresentation(underlying_id=underlying_id)
+        return MetaRepresentation(
+            event_type=meta_event_type, underlying_id=underlying_id
+        )
     assert underlying_id is None
     return tag
 
@@ -149,14 +184,14 @@ def create_meta_edge(
     try:
         target_info = meta_nodes[target_id]
         if is_node_tag:
-            assert target_info[
-                "is_node_representation"
-            ], "A node tag should point to a node representation"
+            assert target_info["is_node_representation"], (
+                "A node tag should point to a node representation"
+            )
             event_type = MetaEventType.CREATE_NODE_TAG
         if is_edge_tag:
-            assert target_info[
-                "is_edge_representation"
-            ], "An edge tag should point to an edge representation"
+            assert target_info["is_edge_representation"], (
+                "An edge tag should point to an edge representation"
+            )
             event_type = MetaEventType.CREATE_EDGE_TAG
     except KeyError:
         raise ValueError(f"TARGET NODE {target_id} NOT FOUND IN ARCHIVE'S META NETWORK")
@@ -220,3 +255,7 @@ def write_meta_event(event: MetaEventModel, signing_key, arc_idx: ArchiveIndex):
     arc_idx.arc.last_meta_event_hash_ = event_hash
     arc_idx.update_id_mappings(event)
     arc_idx.arc.n_meta_events_ += 1
+    # if the meta event created a new representation update the mappings
+    if isinstance(event.body, MetaRepresentation):
+        arc_idx.repr_id_to_underlying_id_[event.body.node_id] = event.body.underlying_id
+        arc_idx.underlying_id_to_repr_id_[event.body.underlying_id] = event.body.node_id

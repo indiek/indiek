@@ -144,11 +144,11 @@ def main():
         )
     elif args.command == "set_tag":
         set_tag.run(
-            args.tag,
-            args.id,
-            curr_public_key,
-            curr_signing_key,
-            archive,
+            edge_source=args.tag,
+            underlying_target=args.id,
+            curr_public_key=curr_public_key,
+            curr_signing_key=curr_signing_key,
+            archive_idx=archive_index,
         )
     elif args.command == "read":
         read.run(archive_index)

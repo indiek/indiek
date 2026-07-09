@@ -183,8 +183,16 @@ class ArchiveIndex:
             verified_archive (Archive): The archive is assumed to have been verified
         """
         self.arc = verified_archive
-        self.human_to_machine_id_, self.id_info_ = self._build_index()
+        self.human_to_machine_id_ = None
+        self.id_info_ = None
+        self.repr_id_to_underlying_id_ = None
+        self._build_index()  # side-effect=set previous three attr
+        self.machine_to_human_id_ = None
         self.machine_to_human_id_ = {v: k for k, v in self.human_to_machine_id_.items()}
+        self.underlying_id_to_repr_id_ = None
+        self.underlying_id_to_repr_id_ = {
+            v: k for k, v in self.repr_id_to_underlying_id_.items()
+        }
 
     @property
     def last_event_hash_(self):
@@ -203,8 +211,15 @@ class ArchiveIndex:
         return self.arc.n_meta_events_
 
     def _build_index(self):
+        """Build a simple index
+
+        Side effect: sets the following three attr
+            self.human_to_machine_id_
+            self.id_info_
+            self.repr_id_to_underlying_id_
+        """
+
         idmap = {}
-        id_info = {}
         """Apply eX and mX patterns to graph items
 
         With X an integer growing in chronological order,
@@ -212,6 +227,8 @@ class ArchiveIndex:
         mX denotes a node or edge in the meta network
         """
 
+        id_info = {}  # info about al items in both networks
+        meta_to_base_id = {}
         item_count = 0
         print("...building index looping through events...")
         for event in self.arc.event_log:
@@ -232,7 +249,7 @@ class ArchiveIndex:
                     "is_edge": is_edge,
                     "author": event["header"]["author"],
                 }
-            print(f"\n *** {item_count=}  {item_id=}")
+            print(f"*** {item_count=}  {item_id=}")
 
         item_count = 0
         print("...building index looping through meta events...")
@@ -266,8 +283,17 @@ class ArchiveIndex:
                     == MetaEventType.CREATE_NODE_REPRESENTATION.value,
                     "author": meta_event["header"]["author"],
                 }
-            print(f"\n *** {item_count=}  {item_id=}")
-        return idmap, id_info
+            if meta_event["body"]["event_type"] in {
+                MetaEventType.CREATE_EDGE_REPRESENTATION.value,
+                MetaEventType.CREATE_NODE_REPRESENTATION.value,
+            }:
+                meta_to_base_id[UUID(meta_event["body"]["node_id"])] = UUID(
+                    meta_event["body"]["underlying_id"]
+                )
+            print(f"*** {item_count=}  {item_id=}")
+        self.human_to_machine_id_ = idmap
+        self.id_info_ = id_info
+        self.repr_id_to_underlying_id_ = meta_to_base_id
 
     def update_id_mappings(self, event: EventModel | MetaEventModel):
         def get_latest_int(pref):
