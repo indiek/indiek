@@ -6,3 +6,5 @@ src/ik/__pycache__
 *graphml
 lib
 *html
+.env.anonymous1
+.env.genesis

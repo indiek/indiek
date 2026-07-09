@@ -19,20 +19,18 @@ def main():
     parser = argparse.ArgumentParser(
         prog="ik", description="The IndieK CLI application"
     )
-
+    parser.add_argument("--dot-env", required=False, default=".env")
     # Define subparsers for the commands
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Command: $ ik create_node
     node_parser = subparsers.add_parser("create_node", help="Create a new node")
-    node_parser.add_argument("--author", required=True, help="Author standard name")
     node_parser.add_argument(
         "--content", required=True, help="Text content attached to node"
     )
 
     # Command: $ ik create_edge
     edge_parser = subparsers.add_parser("create_edge", help="Create a new edge")
-    edge_parser.add_argument("--author", required=True, help="Author standard name")
     edge_parser.add_argument(
         "--content", required=True, help="Text content attached to edge"
     )
@@ -52,14 +50,12 @@ def main():
     )
     edge_tag_parser.add_argument("--name", required=True, help="Tag Name")
     edge_tag_parser.add_argument("--description", required=True, help="Tag Description")
-    edge_tag_parser.add_argument("--author", required=True, help="Author standard name")
 
     node_tag_parser = subparsers.add_parser(
         "create_node_tag", help="Create a tag for nodes"
     )
     node_tag_parser.add_argument("--name", required=True, help="Tag Name")
     node_tag_parser.add_argument("--description", required=True, help="Tag Description")
-    node_tag_parser.add_argument("--author", required=True, help="Author standard name")
 
     tag_parser = subparsers.add_parser("set_tag", help="Set a tag for an edge or node")
     tag_parser.add_argument(
@@ -89,28 +85,18 @@ def main():
     args = parser.parse_args()
 
     # PARSE LOCAL CONFIG
-    load_dotenv()
+    load_dotenv(args.dot_env)
 
     # HANDLE KEYS
-    my_private_key_hex: str = os.getenv("GENESIS_AUTHOR_PRIVATE_KEY")
-    anonymous_1_private_hex: str = os.getenv("ANONYMOUS1_PRIVATE_KEY")
-    anonymous_1_signing_key: nacl.signing.SigningKey = get_signing_key(
-        anonymous_1_private_hex
-    )
-    signing_key: nacl.signing.SigningKey = get_signing_key(my_private_key_hex)
-    public_key_hex: str = signing_key.verify_key.encode(
+    # TODO: In a production env distinct authors may trigger distinct OS users -> file permissions
+    _private_key_hex: str = os.getenv("IK_AUTHOR_PRIVATE_KEY")
+    curr_signing_key: nacl.signing.SigningKey = get_signing_key(_private_key_hex)
+    curr_public_key: str = curr_signing_key.verify_key.encode(
         nacl.encoding.HexEncoder
     ).decode("utf-8")
-    anonymous1_public_key_hex: str = anonymous_1_signing_key.verify_key.encode(
-        nacl.encoding.HexEncoder
-    ).decode("utf-8")
-    print("GENESIS AUTHOR PUBLIC KEY HEX (author_id) IS:", public_key_hex)
-    print(
-        "ANONYMOUS AUTHOR 1 PUBLIC KEY HEX (author_id) IS:", anonymous1_public_key_hex
-    )
 
     # SETUP ARCHIVE
-    rootp = "/Users/adrianradillo/prog/indiek/public_archive/archive/"
+    rootp = os.getenv("IK_ARCHIVE_PATH")  # TODO: use pathlib.Path
     infra_blob = InfraBlobStore(archive_root=rootp)
     elog = InfraEventLog(rootp)
     meta_log = InfraEventLog(os.path.join(rootp, "meta"))
@@ -120,22 +106,7 @@ def main():
         f"THE ARCHIVE AT {rootp} HAS {archive.nevents_} EVENTS and {archive.n_meta_events_} META EVENTS"
     )
 
-    if args.command in {
-        "create_node",
-        "create_edge",
-        "create_edge_tag",
-        "create_node_tag",
-        "set_tag",
-    }:
-        # TODO: for the blob writing events; add a cleaning last step to erase written blob if event persistence failed
-        if args.author == "ANONYMOUS1":
-            curr_signing_key = anonymous_1_signing_key
-            curr_public_key = anonymous1_public_key_hex
-        elif args.author == "GENESIS":
-            curr_signing_key = signing_key
-            curr_public_key = public_key_hex
-        else:
-            raise ValueError(f"Unknown author {args.author}")
+    # TODO: for the blob writing events; add a cleaning last step to erase written blob if event persistence failed
 
     # Route to your scripts based on the command
     if args.command == "create_node":
