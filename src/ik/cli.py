@@ -124,7 +124,7 @@ def main():
             args.target_node,
             curr_public_key,
             curr_signing_key,
-            archive,
+            archive_index,
         )
     elif args.command == "create_edge_tag":
         create_edge_tag.run(
