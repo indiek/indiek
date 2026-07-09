@@ -187,12 +187,12 @@ def create_meta_edge(
             assert target_info[
                 "is_node_representation"
             ], "A node tag should point to a node representation"
-            event_type = MetaEventType.CREATE_NODE_TAG
+            event_type = MetaEventType.SET_NODE_TAG
         if is_edge_tag:
             assert target_info[
                 "is_edge_representation"
             ], "An edge tag should point to an edge representation"
-            event_type = MetaEventType.CREATE_EDGE_TAG
+            event_type = MetaEventType.SET_EDGE_TAG
     except KeyError:
         raise ValueError(f"TARGET NODE {target_id} NOT FOUND IN ARCHIVE'S META NETWORK")
 
