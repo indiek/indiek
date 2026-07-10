@@ -1,17 +1,18 @@
+from uuid import UUID
+from typing import Sequence, Iterable, Callable
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from ik.models import MediaType
-from ik.blob import Archive
+from ik.blob import ArchiveIndex
 
 
-def build_graphml_tree(
-    archive: Archive,
-) -> ET.ElementTree:
+def build_graphml_tree(events: Iterable, blob_resolver: Callable) -> ET.ElementTree:
     """
     Parses a sequence of ik events and builds a GraphML XML tree.
 
     Args:
         events: An iterable of parsed event dictionaries (from events.ndjson).
+        blob_resolver:
 
     Returns:
         An xml.etree.ElementTree object representing the graph.
@@ -55,7 +56,7 @@ def build_graphml_tree(
     )
 
     # 4. Process Events Append-Only Log
-    for event in archive.event_log:
+    for event in events:
         header = event.get("header", {})
         body = event.get("body", {})
         event_type = body.get("event_type")
@@ -70,7 +71,7 @@ def build_graphml_tree(
         label_text = ""
 
         if blob_hash and media_type == MediaType.TEXT_PLAIN.value:
-            label_text = archive.blob_store.blob_resolver(blob_hash, media_type)
+            label_text = blob_resolver(blob_hash, media_type)
 
         if event_type == "create_node":
             node_id = body.get("node_id")
@@ -104,14 +105,34 @@ def build_graphml_tree(
     return ET.ElementTree(root)
 
 
-def export_to_file(
-    archive: Archive,
-    output_path: str,
-) -> None:
+def run(archive_idx: ArchiveIndex, output_path: str, tags: Sequence[str]):
     """
     Builds the GraphML and writes it to disk with pretty-printing.
     """
-    tree = build_graphml_tree(archive)
+    tags_uuid = set()
+    for human_tag in tags:
+        try:
+            as_uuid = UUID(human_tag)
+        except ValueError:
+            as_uuid = UUID(archive_idx.human_to_machine_id_[human_tag])
+        tags_uuid.update({as_uuid})
+
+    def tag_filter(event_dict):
+        try:
+            item_id = UUID(event_dict["body"]["node_id"])
+        except KeyError:
+            item_id = UUID(event_dict["body"]["edge_id"])
+        tags_from_info = archive_idx.id_info_[item_id]["tags"]
+        return bool(tags_from_info.intersection(tags_uuid))
+
+    if tags_uuid:
+        filtered_event_log = filter(tag_filter, archive_idx.arc.event_log)
+    else:
+        filtered_event_log = archive_idx.arc.event_log
+    tree = build_graphml_tree(
+        filtered_event_log, archive_idx.arc.blob_store.blob_resolver
+    )
+    # TODO: implement sticky nodes to dangling edges
     root = tree.getroot()
 
     # Generate raw string
@@ -124,8 +145,3 @@ def export_to_file(
     # Write to file
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(pretty_xml)
-
-
-def run(archive: Archive, out: str):
-    export_to_file(archive, out)
-    print(f"Successfully exported {archive.nevents_} events to {out}")

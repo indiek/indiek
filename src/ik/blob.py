@@ -254,6 +254,7 @@ class ArchiveIndex:
                     "is_meta": False,
                     "is_edge": is_edge,
                     "author": event["header"]["author"],
+                    "tags": set(),  # will get filled when parsing meta events
                 }
             print(f"*** {item_count=}  {item_id=}")
 
@@ -296,6 +297,14 @@ class ArchiveIndex:
                 meta_to_base_id[UUID(meta_event["body"]["node_id"])] = UUID(
                     meta_event["body"]["underlying_id"]
                 )
+            if meta_event["body"]["event_type"] in {
+                MetaEventType.SET_EDGE_TAG.value,
+                MetaEventType.SET_NODE_TAG.value,
+            }:
+                meta_node_id = UUID(meta_event["body"]["target_node"])
+                underlying_uuid = meta_to_base_id[meta_node_id]
+                current_tag_uuid = UUID(meta_event["body"]["source_node"])
+                id_info[underlying_uuid]["tags"].update({current_tag_uuid})
             print(f"*** {item_count=}  {item_id=}")
         self.human_to_machine_id_ = idmap
         self.id_info_ = id_info

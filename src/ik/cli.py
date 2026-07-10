@@ -13,6 +13,10 @@ import ik.read as read
 import ik.export as export
 
 
+def parse_comma_separated(value):
+    return value.split(",") if value else []
+
+
 def main():
 
     # CLI ARGS
@@ -78,6 +82,13 @@ def main():
     )
     export_parser.add_argument(
         "--output-path", required=True, help="Path to file to be persisted to disk"
+    )
+    export_parser.add_argument(
+        "--tags",
+        required=False,
+        help="Comma-separated list of tags to apply filter",
+        type=parse_comma_separated,
+        default=[],
     )
     # TODO: add tag filtering capability
 
@@ -150,7 +161,7 @@ def main():
     elif args.command == "read":
         read.run(archive_index)
     elif args.command == "export":
-        export.run(archive, args.output_path)
+        export.run(archive_index, args.output_path, args.tags)
 
 
 if __name__ == "__main__":
