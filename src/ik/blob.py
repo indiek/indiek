@@ -157,6 +157,7 @@ class Archive:
         real_prev_hash = None  # for scenario where event log is empty
         ecount = 0
         for ecount, event in enumerate(event_log):
+            breakpoint()
             # 1. check that the stored previous hash matches the real previous hash
             if ecount:  # nothing to check for genesis event
                 stored_prev_hash = event["header"]["prev_hash"]
