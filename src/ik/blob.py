@@ -255,13 +255,16 @@ class ArchiveIndex:
                     "is_edge": is_edge,
                     "author": event["header"]["author"],
                     "tags": set(),  # will get filled when parsing meta events
+                    "body": event["body"].copy(),
                 }
             print(f"*** {item_count=}  {item_id=}")
 
         item_count = 0
         print("...building index looping through meta events...")
         for meta_event in self.arc.meta_event_log:
-            if meta_event["body"]["event_type"] in {
+            body = meta_event["body"]
+            event_type = body["event_type"]
+            if event_type in {
                 MetaEventType.CREATE_EDGE_TAG.value,
                 MetaEventType.CREATE_NODE_TAG.value,
                 MetaEventType.CREATE_EDGE_REPRESENTATION.value,
@@ -271,39 +274,38 @@ class ArchiveIndex:
             }:
                 item_count += 1
                 try:
-                    item_id = meta_event["body"]["node_id"]
+                    item_id = body["node_id"]
                     is_edge = False
                 except KeyError:
-                    item_id = meta_event["body"]["edge_id"]
+                    item_id = body["edge_id"]
                     is_edge = True
                 idmap["m" + str(item_count)] = item_id
-                id_info[UUID(item_id)] = {
+
+                item_uuid = UUID(item_id)
+                id_info[item_uuid] = {
                     "is_meta": True,
                     "is_edge": is_edge,
-                    "is_edge_tag": meta_event["body"]["event_type"]
-                    == MetaEventType.CREATE_EDGE_TAG.value,
-                    "is_node_tag": meta_event["body"]["event_type"]
-                    == MetaEventType.CREATE_NODE_TAG.value,
-                    "is_edge_representation": meta_event["body"]["event_type"]
+                    "is_edge_tag": event_type == MetaEventType.CREATE_EDGE_TAG.value,
+                    "is_node_tag": event_type == MetaEventType.CREATE_NODE_TAG.value,
+                    "is_edge_representation": event_type
                     == MetaEventType.CREATE_EDGE_REPRESENTATION.value,
-                    "is_node_representation": meta_event["body"]["event_type"]
+                    "is_node_representation": event_type
                     == MetaEventType.CREATE_NODE_REPRESENTATION.value,
                     "author": meta_event["header"]["author"],
+                    "body": body.copy(),
                 }
-            if meta_event["body"]["event_type"] in {
+            if event_type in {
                 MetaEventType.CREATE_EDGE_REPRESENTATION.value,
                 MetaEventType.CREATE_NODE_REPRESENTATION.value,
             }:
-                meta_to_base_id[UUID(meta_event["body"]["node_id"])] = UUID(
-                    meta_event["body"]["underlying_id"]
-                )
-            if meta_event["body"]["event_type"] in {
+                meta_to_base_id[UUID(body["node_id"])] = UUID(body["underlying_id"])
+            if body["event_type"] in {
                 MetaEventType.SET_EDGE_TAG.value,
                 MetaEventType.SET_NODE_TAG.value,
             }:
-                meta_node_id = UUID(meta_event["body"]["target_node"])
+                meta_node_id = UUID(body["target_node"])
                 underlying_uuid = meta_to_base_id[meta_node_id]
-                current_tag_uuid = UUID(meta_event["body"]["source_node"])
+                current_tag_uuid = UUID(body["source_node"])
                 id_info[underlying_uuid]["tags"].update({current_tag_uuid})
             print(f"*** {item_count=}  {item_id=}")
         self.human_to_machine_id_ = idmap
