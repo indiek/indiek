@@ -34,7 +34,8 @@ class InfraEventLog(InfraIO):
         self.path_event_log = self.root_path.joinpath("events")
 
     def __iter__(self):
-        for event_log_filename in self.path_event_log.rglob("*ndjson"):
+        paths_str = map(str, self.path_event_log.rglob("*ndjson"))
+        for event_log_filename in sorted(paths_str):
             with open(event_log_filename, "rt", encoding="utf-8") as f:
                 for event_line in f:
                     yield json.loads(event_line)
@@ -157,7 +158,6 @@ class Archive:
         real_prev_hash = None  # for scenario where event log is empty
         ecount = 0
         for ecount, event in enumerate(event_log):
-            breakpoint()
             # 1. check that the stored previous hash matches the real previous hash
             if ecount:  # nothing to check for genesis event
                 stored_prev_hash = event["header"]["prev_hash"]
