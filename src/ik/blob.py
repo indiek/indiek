@@ -189,6 +189,13 @@ class ArchiveIndex:
     """Simple class to quickly inspect and browse an archive."""
 
     def refresh(self):
+        print("**** REFRESH DEBUG")
+        print(f"""
+{self.arc.blob_store.root_path=}
+{self.arc.event_log.root_path=}
+{self.arc.meta_event_log.root_path=}
+********
+""")
         blob = InfraBlobStore(self.arc.blob_store.root_path)
         elog = InfraEventLog(self.arc.event_log.root_path)
         mlog = InfraEventLog(self.arc.meta_event_log.root_path)

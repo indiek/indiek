@@ -18,3 +18,10 @@ def run(
             archive_idx, file_content, media_type, curr_public_key, curr_signing_key
         )
         archive_idx = archive_idx.refresh()
+        print("**** INGEST DEBUG")
+        print(f"""
+{archive_idx.arc.blob_store.root_path=}
+{archive_idx.arc.event_log.root_path=}
+{archive_idx.arc.meta_event_log.root_path=}
+********
+""")
