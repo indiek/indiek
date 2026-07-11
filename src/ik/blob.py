@@ -144,6 +144,12 @@ class Archive:
             f"THE ARCHIVE AT HAS {self.nevents_} EVENTS and {self.n_meta_events_} META EVENTS"
         )
 
+    @property
+    def root_path(self):
+        if self.blob_store.root_path != self.event_log.root_path:
+            raise NotImplementedError()
+        return self.blob_store.root_path
+
     def check_archive_integrity(self, event_log) -> Tuple[str, int]:
         # TODO: currently doesn't check public keys against MANIFEST
         # TODO: if unreferenced blobs, at least mention it as a warning...
@@ -181,6 +187,13 @@ class Archive:
 
 class ArchiveIndex:
     """Simple class to quickly inspect and browse an archive."""
+
+    def refresh(self):
+        blob = InfraBlobStore(self.arc.blob_store.root_path)
+        elog = InfraEventLog(self.arc.event_log.root_path)
+        mlog = InfraEventLog(self.arc.meta_event_log.root_path)
+        arc = Archive(elog, mlog, blob)
+        return self.__class__(arc)
 
     def __init__(self, verified_archive: Archive):
         """Create a simple index for the archive.

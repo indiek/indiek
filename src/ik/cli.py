@@ -1,3 +1,4 @@
+import logging
 import argparse
 import os
 import nacl
@@ -11,6 +12,7 @@ import ik.create_node_tag as create_node_tag
 import ik.set_tag as set_tag
 import ik.read as read
 import ik.export as export
+import ik.ingest as ingest
 
 
 def parse_comma_separated(value):
@@ -18,7 +20,9 @@ def parse_comma_separated(value):
 
 
 def main():
-
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    logger.debug("DEBUGGGGGGGING")
     # CLI ARGS
     parser = argparse.ArgumentParser(
         prog="ik", description="The IndieK CLI application"
@@ -90,7 +94,13 @@ def main():
         type=parse_comma_separated,
         default=[],
     )
-    # TODO: add tag filtering capability
+
+    ingest_parser = subparsers.add_parser(
+        "ingest", help="Ingest all files in a folder as nodes."
+    )
+    ingest_parser.add_argument(
+        "--input-folder", required=True, help="Path to folder to be browsed."
+    )
 
     # Parse the arguments from the terminal
     args = parser.parse_args()
@@ -162,6 +172,19 @@ def main():
         read.run(archive_index)
     elif args.command == "export":
         export.run(archive_index, args.output_path, args.tags)
+    elif args.command == "ingest":
+        file_paths = [
+            os.path.join(args.input_folder, fpath)
+            for fpath in os.listdir(args.input_folder)
+        ]
+        print(file_paths)
+
+        ingest.run(
+            file_paths,
+            archive_index,
+            curr_public_key,
+            curr_signing_key,
+        )
 
 
 if __name__ == "__main__":

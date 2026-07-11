@@ -9,3 +9,4 @@ lib
 .env.anonymous1
 .env.genesis
 *zip
+sandbox
