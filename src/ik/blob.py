@@ -1,6 +1,7 @@
 """Code to generate and I/O blobs"""
 
 from typing import Any, Tuple
+import logging
 import os
 import json
 from uuid import UUID
@@ -8,6 +9,8 @@ from pathlib import Path
 import hashlib
 from ik.signing import verify_signature, get_canonical_hash
 from ik.models import MediaType, EventType, MetaEventType, EventModel, MetaEventModel
+
+logger = logging.getLogger(__name__)
 
 
 class IntegrityError(Exception):
@@ -86,10 +89,12 @@ class InfraBlobStore(InfraIO):
         if not os.path.exists(file_path):
             with open(file_path, "wb") as f:
                 f.write(bin_content)
-            print(f"BLOB FILE WRITTEN TO {file_path}")
+            logger.debug(f"BLOB FILE WRITTEN TO {file_path}")
         else:
             # TODO: handle the warning below better
-            print("***WARNING*** FILE EXISTS; NOTHING ADDITIONAL WRITTEN IN blobs/")
+            logger.warning(
+                "***WARNING*** FILE EXISTS; NOTHING ADDITIONAL WRITTEN IN blobs/"
+            )
 
     def load_bin_blob(self, blob_hash_from_json: str) -> bytes:
         skip = len(self.blob_hash_prefix)
@@ -140,9 +145,9 @@ class Archive:
         self.last_meta_event_hash_, self.n_meta_events_ = self.check_archive_integrity(
             self.meta_event_log
         )
-        print("ARCHIVE INTEGRITY VERIFIED")
-        print(
-            f"THE ARCHIVE AT HAS {self.nevents_} EVENTS and {self.n_meta_events_} META EVENTS"
+        logger.warning("ARCHIVE INTEGRITY VERIFIED")
+        logger.debug(
+            f"THE ARCHIVE HAS {self.nevents_} EVENTS and {self.n_meta_events_} META EVENTS"
         )
 
     @property
@@ -190,8 +195,8 @@ class ArchiveIndex:
     """Simple class to quickly inspect and browse an archive."""
 
     def refresh(self):
-        print("**** REFRESH DEBUG")
-        print(f"""
+        logger.debug("**** REFRESH DEBUG")
+        logger.debug(f"""
 {self.arc.blob_store.root_path=}
 {self.arc.event_log.root_path=}
 {self.arc.meta_event_log.root_path=}
@@ -257,7 +262,7 @@ class ArchiveIndex:
         id_info = {}  # info about al items in both networks
         meta_to_base_id = {}
         item_count = 0
-        print("...building index looping through events...")
+        logger.debug("...building index looping through events...")
         for event in self.arc.event_log:
             if event["body"]["event_type"] in {
                 EventType.CREATE_EDGE.value,
@@ -278,10 +283,10 @@ class ArchiveIndex:
                     "tags": set(),  # will get filled when parsing meta events
                     "body": event["body"].copy(),
                 }
-            print(f"*** {item_count=}  {item_id=}")
+            logger.debug(f"*** {item_count=}  {item_id=}")
 
         item_count = 0
-        print("...building index looping through meta events...")
+        logger.debug("...building index looping through meta events...")
         for meta_event in self.arc.meta_event_log:
             body = meta_event["body"]
             event_type = body["event_type"]
@@ -328,7 +333,7 @@ class ArchiveIndex:
                 underlying_uuid = meta_to_base_id[meta_node_id]
                 current_tag_uuid = UUID(body["source_node"])
                 id_info[underlying_uuid]["tags"].update({current_tag_uuid})
-            print(f"*** {item_count=}  {item_id=}")
+            logger.debug(f"*** {item_count=}  {item_id=}")
         self.human_to_machine_id_ = idmap
         self.id_info_ = id_info
         self.repr_id_to_underlying_id_ = meta_to_base_id

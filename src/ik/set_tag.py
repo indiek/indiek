@@ -1,4 +1,5 @@
 from uuid import UUID
+import logging
 from ik.events import (
     create_meta_edge,
     create_meta_event,
@@ -7,6 +8,8 @@ from ik.events import (
 )
 from ik.models import MetaEventType
 from ik.blob import ArchiveIndex, Archive
+
+logger = logging.getLogger(__name__)
 
 
 def run(
@@ -33,9 +36,9 @@ def run(
     # now the underlying target is a str corresponding to a proper UUID
     queried_uuid = UUID(underlying_target)
     # confirm the underlying target is an existing ID from the base network
-    assert queried_uuid in archive_idx.id_info_.keys(), (
-        "UUID is not part of any network (neither base nor meta)"
-    )
+    assert (
+        queried_uuid in archive_idx.id_info_.keys()
+    ), "UUID is not part of any network (neither base nor meta)"
     item_info = archive_idx.id_info_[queried_uuid]
     assert not item_info["is_meta"], "UUID should not be an item from the meta network"
     if item_info["is_edge"]:
@@ -44,7 +47,7 @@ def run(
         node_or_edge_repr = MetaEventType.CREATE_NODE_REPRESENTATION
     # create representation of the target if it doesn't exist yet
     if queried_uuid not in archive_idx.underlying_id_to_repr_id_:
-        print("...Creating non-existent representation first")
+        logger.debug("...Creating non-existent representation first")
         edge_target: UUID = create_representation(
             underlying_uuid_str=underlying_target,
             correct_event=node_or_edge_repr,
@@ -52,7 +55,7 @@ def run(
             archive_index=archive_idx,
             signing_key=curr_signing_key,
         )
-        print("...Refreshing archive and index")
+        logger.debug("...Refreshing archive and index")
         refreshed_archive = Archive(
             event_log=archive_idx.arc.event_log,
             meta_event_log=archive_idx.arc.meta_event_log,
@@ -61,7 +64,7 @@ def run(
         archive_idx = ArchiveIndex(refreshed_archive)
     else:
         edge_target: UUID = archive_idx.underlying_id_to_repr_id_[queried_uuid]
-    print("...Now creating the meta edge")
+    logger.debug("...Now creating the meta edge")
     body = create_meta_edge(
         source_id=meta_source_uuid,
         target_id=edge_target,

@@ -1,6 +1,9 @@
+import logging
 from ik.blob import ArchiveIndex
 from ik.models import MediaType
 from ik.create_node import create_node_from_content
+
+logger = logging.getLogger(__name__)
 
 
 def run(
@@ -18,8 +21,8 @@ def run(
             archive_idx, file_content, media_type, curr_public_key, curr_signing_key
         )
         archive_idx = archive_idx.refresh()
-        print("**** INGEST DEBUG")
-        print(f"""
+        logger.debug("**** INGEST DEBUG")
+        logger.debug(f"""
 {archive_idx.arc.blob_store.root_path=}
 {archive_idx.arc.event_log.root_path=}
 {archive_idx.arc.meta_event_log.root_path=}

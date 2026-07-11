@@ -1,4 +1,5 @@
 import os
+import logging
 from uuid import UUID
 from ik.signing import sign_event
 from ik.blob import Archive, ArchiveIndex
@@ -15,6 +16,8 @@ from ik.models import (
     Tag,
     MetaRepresentation,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def create_representation(
@@ -184,14 +187,14 @@ def create_meta_edge(
     try:
         target_info = meta_nodes[target_id]
         if is_node_tag:
-            assert target_info["is_node_representation"], (
-                "A node tag should point to a node representation"
-            )
+            assert target_info[
+                "is_node_representation"
+            ], "A node tag should point to a node representation"
             event_type = MetaEventType.SET_NODE_TAG
         if is_edge_tag:
-            assert target_info["is_edge_representation"], (
-                "An edge tag should point to an edge representation"
-            )
+            assert target_info[
+                "is_edge_representation"
+            ], "An edge tag should point to an edge representation"
             event_type = MetaEventType.SET_EDGE_TAG
     except KeyError:
         raise ValueError(f"TARGET NODE {target_id} NOT FOUND IN ARCHIVE'S META NETWORK")
@@ -225,8 +228,8 @@ def write_event(event: EventModel, signing_key, arc_idx: ArchiveIndex):
     event_json_str = event.model_dump_json()
     with open(file_path, "a", encoding="utf-8") as f:
         f.write(event_json_str + "\n")
-    print(f"EVENT {event_json_str} WRITTEN TO {file_path}")
-    print("****** Rebuild Archive and Index for subsequent work *****")
+    logger.debug(f"EVENT {event_json_str} WRITTEN TO {file_path}")
+    logger.info("****** Rebuild Archive and Index for subsequent work *****")
 
 
 def write_meta_event(event: MetaEventModel, signing_key, arc_idx: ArchiveIndex):
@@ -247,5 +250,5 @@ def write_meta_event(event: MetaEventModel, signing_key, arc_idx: ArchiveIndex):
     event_json_str = event.model_dump_json()
     with open(file_path, "a", encoding="utf-8") as f:
         f.write(event_json_str + "\n")
-    print(f"META EVENT {event_json_str} WRITTEN TO {file_path}")
-    print("****** Rebuild Archive and Index for subsequent work *****")
+    logger.debug(f"META EVENT {event_json_str} WRITTEN TO {file_path}")
+    logger.info("****** Rebuild Archive and Index for subsequent work *****")

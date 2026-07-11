@@ -1,6 +1,7 @@
 import logging
 import argparse
 import os
+import sys
 import nacl
 from dotenv import load_dotenv
 from ik.signing import get_signing_key
@@ -21,13 +22,14 @@ def parse_comma_separated(value):
 
 def main():
     logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    logger.debug("DEBUGGGGGGGING")
+    logger.addHandler(logging.StreamHandler(sys.stdout))
+    logger.setLevel(logging.WARNING)  # set to logging.DEBUG if needed
     # CLI ARGS
     parser = argparse.ArgumentParser(
         prog="ik", description="The IndieK CLI application"
     )
     parser.add_argument("--dot-env", required=False, default=".env")
+    parser.add_argument("--logging-level", required=False, default="WARNING")
     # Define subparsers for the commands
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -105,6 +107,13 @@ def main():
     # Parse the arguments from the terminal
     args = parser.parse_args()
 
+    try:
+        logarg = args.logging_level
+    except AttributeError:
+        ...
+    else:
+        logger.setLevel(getattr(logging, logarg))
+
     # PARSE LOCAL CONFIG
     load_dotenv(args.dot_env)
 
@@ -177,7 +186,7 @@ def main():
             os.path.join(args.input_folder, fpath)
             for fpath in os.listdir(args.input_folder)
         ]
-        print(file_paths)
+        logger.debug(file_paths)
 
         ingest.run(
             file_paths,
