@@ -1,3 +1,0 @@
-pynacl
-python-dotenv
-pydantic
