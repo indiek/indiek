@@ -107,7 +107,10 @@ def main():
     )
 
     ingest_parser = subparsers.add_parser(
-        "ingest", help="Ingest all files in a folder as nodes."
+        "ingest",
+        help="""Ingest all files in a folder as nodes. Combine 
+        with ik --logging-level CRITICAL to render the logger
+          less verbose at stdout.""",
     )
     ingest_parser.add_argument(
         "--input-folder",

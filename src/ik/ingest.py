@@ -64,3 +64,4 @@ def run(
             curr_signing_key,
             archive_idx,
         )
+        archive_idx = archive_idx.refresh()
