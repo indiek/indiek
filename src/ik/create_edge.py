@@ -3,7 +3,7 @@ from ik.events import create_edge, create_event, write_event
 from uuid import UUID
 
 
-def run(
+def create_base_edge(
     edge_content,
     edge_source,
     edge_target,
@@ -11,6 +11,17 @@ def run(
     curr_signing_key,
     archive_idx,
 ):
+    """Create an edge in the base network of the archive
+
+    Args:
+        edge_content (_type_): Text data that will become the blob
+        edge_source (str): human-friendly or UUID str of the source node
+        edge_target (str): human-friendly or UUID str of the target node
+        curr_public_key (_type_): _description_
+        curr_signing_key (_type_): _description_
+        archive_idx (_type_): _description_
+    """
+
     if edge_source in archive_idx.human_to_machine_id_:
         edge_source = archive_idx.human_to_machine_id_[edge_source]
     if edge_target in archive_idx.human_to_machine_id_:
@@ -33,3 +44,6 @@ def run(
     event = create_event(body=body, public_key=curr_public_key, archive=archive_idx.arc)
 
     write_event(event, curr_signing_key, arc_idx=archive_idx)
+
+
+run = create_base_edge  # an alias for the CLI

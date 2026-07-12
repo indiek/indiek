@@ -110,7 +110,16 @@ def main():
         "ingest", help="Ingest all files in a folder as nodes."
     )
     ingest_parser.add_argument(
-        "--input-folder", required=True, help="Path to folder to be browsed."
+        "--input-folder",
+        required=False,
+        default=None,
+        help="Folder to be browsed for nodes ingestion from text files.",
+    )
+    ingest_parser.add_argument(
+        "--edges-def-file",
+        required=False,
+        default=None,
+        help="File defining edges to create.",
     )
 
     # Parse the arguments from the terminal
@@ -193,17 +202,28 @@ def main():
     elif args.command == "export":
         export.run(archive_index, args.output_path, args.tags)
     elif args.command == "ingest":
-        file_paths = [
-            os.path.join(args.input_folder, fpath)
-            for fpath in os.listdir(args.input_folder)
-        ]
-        logger.debug(file_paths)
+        if args.input_folder:
+            file_paths = [
+                os.path.join(args.input_folder, fpath)
+                for fpath in os.listdir(args.input_folder)
+            ]
+            logger.debug(file_paths)
+        else:
+            file_paths = []
+
+        if args.edges_def_file:
+            with open(args.edges_def_file, "rt", encoding="utf-8") as f:
+                edge_defs = f.readlines()
+        else:
+            edge_defs = []
 
         ingest.run(
             file_paths,
             archive_index,
             curr_public_key,
             curr_signing_key,
+            file_paths=file_paths,
+            edge_definitions=edge_defs,
         )
 
 
