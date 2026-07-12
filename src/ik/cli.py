@@ -210,6 +210,7 @@ def main():
                 os.path.join(args.input_folder, fpath)
                 for fpath in os.listdir(args.input_folder)
             ]
+            file_paths = sorted(file_paths)
             logger.debug(file_paths)
         else:
             file_paths = []
