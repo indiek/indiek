@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def run(
+    *,
     archive_idx: ArchiveIndex,
     curr_public_key,
     curr_signing_key,

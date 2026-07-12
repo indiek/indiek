@@ -218,10 +218,9 @@ def main():
             edge_defs = []
 
         ingest.run(
-            file_paths,
-            archive_index,
-            curr_public_key,
-            curr_signing_key,
+            archive_idx=archive_index,
+            curr_public_key=curr_public_key,
+            curr_signing_key=curr_signing_key,
             file_paths=file_paths,
             edge_definitions=edge_defs,
         )
