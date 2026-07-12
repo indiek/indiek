@@ -35,6 +35,7 @@ class InfraEventLog(InfraIO):
     def __init__(self, archive_root):
         super().__init__(archive_root)
         self.path_event_log = self.root_path.joinpath("events")
+        # TODO: resurface explicitly to the user which parts of the path_event_log gets created
 
     def __iter__(self):
         paths_str = map(str, self.path_event_log.rglob("*ndjson"))
@@ -49,6 +50,7 @@ class InfraBlobStore(InfraIO):
         super().__init__(archive_root)
         self.blob_hash_prefix = "sha256:"
         self.blobs_path = os.path.join(self.root_path, "blobs", "sha256")
+        # TODO: resurface explicitly to the user which parts of the blobs path gets created
 
     def create_and_persist_blob(self, content, media_type):
         binary_content: bytes = self._bin_encode_decode(

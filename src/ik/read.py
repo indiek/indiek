@@ -61,7 +61,7 @@ def print_events_table(
     console.print(table)
 
 
-def run(archive_idx: ArchiveIndex):
+def run(archive_idx: ArchiveIndex, mini: bool):
     # # TODO: use blob_resolver from blob.py
     # for event_dict in archive.event_log:
     #     pprint(event_dict)
@@ -76,24 +76,33 @@ def run(archive_idx: ArchiveIndex):
     low_columns = {
         "Timestamp": "header.timestamp",
         "Event Type": "body.event_type",
-        "Node ID": "body.node_id",
-        "Edge ID": "body.edge_id",
-        "Source Node": "body.source_node",
-        "Target Node": "body.target_node",
         "Author": "header.author",
     }
     high_columns = {
         "Timestamp": "header.timestamp",
         "Event Type": "body.event_type",
         "Author": "header.author",
-        "Meta Node ID": "body.node_id",
-        "Meta Edge ID": "body.edge_id",
         "Tag Name": "body.name",
-        "Tag Description": "body.description",
-        "Meta Source Node": "body.source_node",
-        "Meta Target Node": "body.target_node",
-        "Underlying ID": "body.underlying_id",
     }
+    if not mini:
+        low_columns.update(
+            {
+                "Node ID": "body.node_id",
+                "Edge ID": "body.edge_id",
+                "Source Node": "body.source_node",
+                "Target Node": "body.target_node",
+            }
+        )
+        high_columns.update(
+            {
+                "Meta Node ID": "body.node_id",
+                "Meta Edge ID": "body.edge_id",
+                "Tag Description": "body.description",
+                "Meta Source Node": "body.source_node",
+                "Meta Target Node": "body.target_node",
+                "Underlying ID": "body.underlying_id",
+            }
+        )
 
     print_events_table(
         archive_idx.arc.event_log,

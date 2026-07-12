@@ -1,5 +1,6 @@
 import logging
 import argparse
+from pathlib import Path
 import os
 import sys
 import nacl
@@ -80,8 +81,16 @@ def main():
     )
 
     # Command: $ ik read
-    subparsers.add_parser("read", help="Read data")
-
+    read_parser = subparsers.add_parser("read", help="Read data")
+    # breakpoint()
+    # read_parser.add_argument()
+    read_parser.add_argument(
+        "--mini",
+        required=False,
+        help="Display a lightweight version of the logs.",
+        action="store_true",
+        default=False,
+    )
     # Command: $ ik export
     export_parser = subparsers.add_parser(
         "export", help="Export the full archive to a GraphML file"
@@ -114,19 +123,21 @@ def main():
     else:
         logger.setLevel(getattr(logging, logarg))
 
-    # PARSE LOCAL CONFIG
-    load_dotenv(args.dot_env)
+    # PARSE LOCAL CONFIG (doesn't override system's variables)
+    load_dotenv(args.dot_env, override=False)
 
     # HANDLE KEYS
     # TODO: In a production env distinct authors may trigger distinct OS users -> file permissions
     _private_key_hex: str = os.getenv("IK_AUTHOR_PRIVATE_KEY")
+
     curr_signing_key: nacl.signing.SigningKey = get_signing_key(_private_key_hex)
     curr_public_key: str = curr_signing_key.verify_key.encode(
         nacl.encoding.HexEncoder
     ).decode("utf-8")
 
     # SETUP ARCHIVE
-    rootp = os.getenv("IK_ARCHIVE_PATH")  # TODO: use pathlib.Path
+    rootp = Path(os.getenv("IK_ARCHIVE_PATH"))  # TODO: use pathlib.Path
+    logger.debug(f"{os.getenv("IK_ARCHIVE_PATH")=}")
     infra_blob = InfraBlobStore(archive_root=rootp)
     elog = InfraEventLog(rootp)
     meta_log = InfraEventLog(os.path.join(rootp, "meta"))
@@ -178,7 +189,7 @@ def main():
             archive_idx=archive_index,
         )
     elif args.command == "read":
-        read.run(archive_index)
+        read.run(archive_index, args.mini)
     elif args.command == "export":
         export.run(archive_index, args.output_path, args.tags)
     elif args.command == "ingest":
