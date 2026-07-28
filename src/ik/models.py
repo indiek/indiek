@@ -15,6 +15,10 @@ PublicKeyHexStr = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 class MediaType(str, Enum):
     TEXT_PLAIN = "text/plain; charset=utf-8"
+    TEXT_MARKDOWN = "text/markdown; charset=utf-8"
+    IMAGE_TIFF = "image/tiff"
+    IMAGE_PNG = "image/png"
+    IMAGE_JPEG = "image/jpeg"
 
 
 class EventType(str, Enum):

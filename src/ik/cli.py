@@ -1,3 +1,4 @@
+import mimetypes
 import logging
 import argparse
 from pathlib import Path
@@ -15,10 +16,43 @@ import ik.set_tag as set_tag
 import ik.read as read
 import ik.export as export
 import ik.ingest as ingest
+from ik.models import MediaType
 
 
 def parse_comma_separated(value):
     return value.split(",") if value else []
+
+
+def process_content(string):
+    if os.path.exists(string) and os.path.isfile(string):
+        if infer_media_type(string) in {MediaType.TEXT_MARKDOWN, MediaType.TEXT_PLAIN}:
+            with open(string, "rt", encoding="utf-8") as fj:
+                return fj.read()
+        else:
+            with open(string, "rb") as fj:
+                return fj.read()
+    else:
+        return string
+
+
+def infer_media_type(string: str) -> MediaType:
+    if os.path.exists(string) and os.path.isfile(string):
+        mime_type, _ = mimetypes.guess_file_type(string)
+        match mime_type:
+            case "text/plain":
+                return MediaType.TEXT_PLAIN
+            case "text/markdown":
+                return MediaType.TEXT_MARKDOWN
+            case MediaType.IMAGE_JPEG.value:
+                return MediaType.IMAGE_JPEG
+            case MediaType.IMAGE_PNG.value:
+                return MediaType.IMAGE_PNG
+            case MediaType.IMAGE_TIFF.value:
+                return MediaType.IMAGE_TIFF
+            case _:
+                raise NotImplementedError("Media Type not supported")
+    else:
+        return MediaType.TEXT_PLAIN
 
 
 def main():
@@ -161,10 +195,11 @@ def main():
     # Route to your scripts based on the command
     if args.command == "create_node":
         create_node.run(
-            node_content=args.content,
+            node_content=process_content(args.content),
             curr_public_key=curr_public_key,
             curr_signing_key=curr_signing_key,
             archive_idx=archive_index,
+            media_type=infer_media_type(args.content),
         )
 
     elif args.command == "create_edge":

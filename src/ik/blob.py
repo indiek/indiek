@@ -53,9 +53,12 @@ class InfraBlobStore(InfraIO):
         # TODO: resurface explicitly to the user which parts of the blobs path gets created
 
     def create_and_persist_blob(self, content, media_type):
-        binary_content: bytes = self._bin_encode_decode(
-            content=content, content_type=media_type, encode_decode="encode"
-        )
+        if media_type in {MediaType.TEXT_MARKDOWN, MediaType.TEXT_PLAIN}:
+            binary_content: bytes = self._bin_encode_decode(
+                content=content, content_type=media_type, encode_decode="encode"
+            )
+        else:
+            binary_content = content
 
         # The hash is the ID and determines the storage path
         blob_hash: str = self._get_blob_hash(binary_content)  # sha256:XXXXX

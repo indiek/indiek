@@ -20,9 +20,9 @@ def create_node_from_content(
     write_event(event, signing_key, index)
 
 
-def run(*, node_content: str, curr_public_key, curr_signing_key, archive_idx):
-    # TODO: make this user-controllable when the time comes
-    media_type = MediaType.TEXT_PLAIN
+def run(
+    *, node_content: str, curr_public_key, curr_signing_key, archive_idx, media_type
+):
     create_node_from_content(
         archive_idx, node_content, media_type, curr_public_key, curr_signing_key
     )
