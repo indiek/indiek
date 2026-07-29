@@ -78,8 +78,9 @@ def create_meta_event(
     )
 
 
-def create_vertex(blob_hash, data_type, blob_hash_prefix) -> Node:
+def create_vertex(title, blob_hash, data_type, blob_hash_prefix) -> Node:
     return Node(  # node_id default factory
+        title=title,
         event_type=EventType.CREATE_NODE,
         media_type=data_type,
         blob_hash=blob_hash_prefix + blob_hash,

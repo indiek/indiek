@@ -78,6 +78,7 @@ class EventBody(BaseModel, ABC):
     blob_hash: str = Field(
         pattern=r"^sha256:[0-9a-f]{64}$"
     )  # Validates after prefix injection
+    title: str | None = None
 
     # 2. Field validator to automatically prepend the prefix 'sha256:'
     @field_validator("blob_hash", mode="before")

@@ -73,6 +73,9 @@ def main():
     node_parser.add_argument(
         "--content", required=True, help="Text content attached to node"
     )
+    node_parser.add_argument(
+        "--title", required=False, default=None, help="Optional title for your node."
+    )
 
     # Command: $ ik create_edge
     edge_parser = subparsers.add_parser("create_edge", help="Create a new edge")
@@ -196,6 +199,7 @@ def main():
     if args.command == "create_node":
         create_node.run(
             node_content=process_content(args.content),
+            node_title=args.title,
             curr_public_key=curr_public_key,
             curr_signing_key=curr_signing_key,
             archive_idx=archive_index,
