@@ -1,5 +1,6 @@
 import logging
 from typing import Sequence
+from pathlib import Path
 from ik.blob import ArchiveIndex
 from ik.models import MediaType
 from ik.create_node import create_node_from_content
@@ -34,8 +35,14 @@ def run(
     for file_path in file_paths:
         with open(file_path, "rt", encoding="utf-8") as f:
             file_content = f.read()
+            title = Path(file_path).stem
         create_node_from_content(
-            archive_idx, file_content, media_type, curr_public_key, curr_signing_key
+            archive_idx,
+            file_content,
+            media_type,
+            curr_public_key,
+            curr_signing_key,
+            title,
         )
         archive_idx = archive_idx.refresh()
         logger.debug("**** INGEST DEBUG")
