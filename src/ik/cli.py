@@ -16,6 +16,7 @@ import ik.set_tag as set_tag
 import ik.read as read
 import ik.export as export
 import ik.ingest as ingest
+import ik.manifest as manifest_mod
 from ik.models import MediaType
 
 
@@ -162,6 +163,16 @@ def main():
         help="File defining edges to create.",
     )
 
+    # Command: $ ik manifest
+    subparsers.add_parser(
+        "manifest",
+        help=(
+            "Write (or update) MANIFEST.json at the archive root.  "
+            "The manifest documents the archive format, schemas, blob store layout, "
+            "and registers the current author's public key."
+        ),
+    )
+
     # Parse the arguments from the terminal
     args = parser.parse_args()
 
@@ -267,6 +278,13 @@ def main():
             file_paths=file_paths,
             edge_definitions=edge_defs,
         )
+
+    elif args.command == "manifest":
+        manifest_path = manifest_mod.generate_manifest(
+            archive_root=rootp,
+            author_public_keys=[curr_public_key],
+        )
+        print(f"MANIFEST written to: {manifest_path}")
 
 
 if __name__ == "__main__":

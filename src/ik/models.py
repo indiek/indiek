@@ -6,6 +6,12 @@ import datetime
 from enum import Enum
 from abc import ABC
 
+# ---------------------------------------------------------------------------
+# Archive format version — bump this when the schema changes in a breaking way.
+# This value is written into every EventHeader and into MANIFEST.json.
+# ---------------------------------------------------------------------------
+EVENT_FORMAT_VERSION: str = "1.0"
+
 # Reusable regex constraint for exactly 64-character lowercase hex strings (SHA-256)
 Sha256HexStr = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
@@ -36,7 +42,7 @@ class MetaEventType(str, Enum):
 
 
 class EventHeader(BaseModel):
-    version: str = "1.0"
+    version: str = EVENT_FORMAT_VERSION
     prev_hash: Sha256HexStr | None  # String and hex validation applied automatically
     timestamp: dt = Field(default_factory=lambda: dt.now(datetime.UTC))
     author: PublicKeyHexStr
