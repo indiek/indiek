@@ -26,3 +26,5 @@ events
     models
   models
 
+# TODOs
+- [ ] ingest infers media_type

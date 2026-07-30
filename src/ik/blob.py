@@ -53,6 +53,7 @@ class InfraBlobStore(InfraIO):
         # TODO: resurface explicitly to the user which parts of the blobs path gets created
 
     def create_and_persist_blob(self, content, media_type):
+        # TODO: consolidate the "in {}" condition below across whole file
         if media_type in {MediaType.TEXT_MARKDOWN, MediaType.TEXT_PLAIN}:
             binary_content: bytes = self._bin_encode_decode(
                 content=content, content_type=media_type, encode_decode="encode"
@@ -70,9 +71,15 @@ class InfraBlobStore(InfraIO):
         return hashlib.sha256(bin_blob).hexdigest()
 
     def _bin_encode_decode(self, content: Any, content_type: str, encode_decode: str):
-        if content_type == MediaType.TEXT_PLAIN and encode_decode == "encode":
+        if (
+            content_type in {MediaType.TEXT_MARKDOWN, MediaType.TEXT_PLAIN}
+            and encode_decode == "encode"
+        ):
             return content.encode(encoding="utf-8")
-        if content_type == MediaType.TEXT_PLAIN and encode_decode == "decode":
+        if (
+            content_type in {MediaType.TEXT_MARKDOWN, MediaType.TEXT_PLAIN}
+            and encode_decode == "decode"
+        ):
             return str(content, encoding="utf-8")
 
     def _persist_bin_blob(self, bin_content, sha256_hex):

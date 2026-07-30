@@ -2,8 +2,7 @@ import logging
 from typing import Sequence
 from pathlib import Path
 from ik.blob import ArchiveIndex
-from ik.models import MediaType
-from ik.create_node import create_node_from_content
+from ik.create_node import create_node_from_content, extract_content_and_mime
 from ik.create_edge import create_base_edge
 
 logger = logging.getLogger(__name__)
@@ -14,7 +13,6 @@ def run(
     archive_idx: ArchiveIndex,
     curr_public_key,
     curr_signing_key,
-    media_type: MediaType = MediaType.TEXT_PLAIN,
     file_paths: Sequence[str] = (),
     edge_definitions: Sequence[str] = (),
 ):
@@ -33,9 +31,8 @@ def run(
     """
 
     for file_path in file_paths:
-        with open(file_path, "rt", encoding="utf-8") as f:
-            file_content = f.read()
-            title = Path(file_path).stem
+        file_content, media_type = extract_content_and_mime(file_path)
+        title = Path(file_path).stem
         create_node_from_content(
             archive_idx,
             file_content,

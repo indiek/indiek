@@ -1,7 +1,37 @@
 from typing import Any
+import mimetypes
+import os
 from ik.blob import ArchiveIndex
 from ik.models import MediaType
 from ik.events import create_vertex, create_event, write_event
+
+
+def extract_content_and_mime(string):
+    if os.path.exists(string) and os.path.isfile(string):
+        mime_type, _ = mimetypes.guess_file_type(string)
+        match mime_type:
+            case "text/plain":
+                media_type = MediaType.TEXT_PLAIN
+            case "text/markdown":
+                media_type = MediaType.TEXT_MARKDOWN
+            case MediaType.IMAGE_JPEG.value:
+                media_type = MediaType.IMAGE_JPEG
+            case MediaType.IMAGE_PNG.value:
+                media_type = MediaType.IMAGE_PNG
+            case MediaType.IMAGE_TIFF.value:
+                media_type = MediaType.IMAGE_TIFF
+            case _:
+                raise NotImplementedError("Media Type not supported")
+        if media_type in {MediaType.TEXT_MARKDOWN, MediaType.TEXT_PLAIN}:
+            with open(string, "rt", encoding="utf-8") as fj:
+                content = fj.read()
+        else:
+            with open(string, "rb") as fj:
+                content = fj.read()
+    else:
+        media_type = MediaType.TEXT_PLAIN
+        content = string
+    return content, media_type
 
 
 def create_node_from_content(
