@@ -91,6 +91,8 @@ def run(archive_idx: ArchiveIndex, mini: bool):
                 "Edge ID": "body.edge_id",
                 "Source Node": "body.source_node",
                 "Target Node": "body.target_node",
+                "Resource Type": "body.resource_type",
+                "Title": "body.title",
             }
         )
         high_columns.update(

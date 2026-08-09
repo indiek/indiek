@@ -1,10 +1,12 @@
+"""Canonical hashing and Ed25519 signing utilities for IndieK events."""
+
 import json
 import hashlib
 import nacl.signing
 from pydantic import BaseModel
 
 
-def get_signing_key(hex_private_key):
+def get_signing_key(hex_private_key: str) -> nacl.signing.SigningKey:
     """
     Loads an existing Ed25519 private key from a hex string.
     """
@@ -34,7 +36,7 @@ def get_canonical_hash(body: dict | BaseModel) -> bytes:
 
 
 # 3. Signing Function
-def sign_event(body: dict | BaseModel, signing_key):
+def sign_event(body: dict | BaseModel, signing_key: nacl.signing.SigningKey) -> str:
     # Hash the data
     msg_hash = get_canonical_hash(body)
 
@@ -46,7 +48,7 @@ def sign_event(body: dict | BaseModel, signing_key):
 
 
 # 4. Verification Function (Crucial for your Archive)
-def verify_signature(body, signature_hex, public_key_hex):
+def verify_signature(body: dict | BaseModel, signature_hex: str, public_key_hex: str) -> bool:
     try:
         # Reconstruct public key
         verify_key = nacl.signing.VerifyKey(
@@ -57,5 +59,5 @@ def verify_signature(body, signature_hex, public_key_hex):
         msg_hash = get_canonical_hash(body)
         verify_key.verify(msg_hash, bytes.fromhex(signature_hex))
         return True
-    except nacl.exceptions.BadSignatureError, ValueError:
+    except (nacl.exceptions.BadSignatureError, ValueError, TypeError):
         return False

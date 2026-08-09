@@ -36,11 +36,11 @@ def run(
     # now the underlying target is a str corresponding to a proper UUID
     queried_uuid = UUID(underlying_target)
     # confirm the underlying target is an existing ID from the base network
-    assert (
-        queried_uuid in archive_idx.id_info_.keys()
-    ), "UUID is not part of any network (neither base nor meta)"
+    if queried_uuid not in archive_idx.id_info_:
+        raise ValueError("UUID is not part of any network (neither base nor meta)")
     item_info = archive_idx.id_info_[queried_uuid]
-    assert not item_info["is_meta"], "UUID should not be an item from the meta network"
+    if item_info["is_meta"]:
+        raise ValueError("UUID should not be an item from the meta network")
     if item_info["is_edge"]:
         node_or_edge_repr = MetaEventType.CREATE_EDGE_REPRESENTATION
     else:

@@ -30,7 +30,7 @@ _EVENT_HEADER_SCHEMA: Dict[str, Any] = {
         "version": {
             "type": "string",
             "description": (
-                "Format version string (e.g. '1.0').  Consumers MUST reject events "
+                "Format version string (for example '2.0'). Consumers MUST reject events "
                 "whose version they do not recognise."
             ),
         },
@@ -77,24 +77,41 @@ _EVENT_BODY_SCHEMA: Dict[str, Any] = {
                     "description": "Optional human-readable title.",
                 },
                 "media_type": {
-                    "type": "string",
+                    "type": "string | null",
                     "enum": [
                         "text/plain; charset=utf-8",
                         "text/markdown; charset=utf-8",
                         "image/tiff",
                         "image/png",
                         "image/jpeg",
+                        "application/pdf; profile=pdfa",
                     ],
-                    "description": "MIME type of the blob referenced by blob_hash.",
+                    "description": "Required for managed and local_file resources; optional URI hint.",
+                },
+                "resource_type": {
+                    "type": "string",
+                    "enum": ["managed", "uri", "local_file"],
+                    "default": "managed",
+                    "description": "Missing in format 1.0 events implies managed.",
                 },
                 "blob_hash": {
-                    "type": "string",
+                    "type": "string | null",
                     "pattern": "^sha256:[0-9a-f]{64}$",
                     "description": (
-                        "Content-address of the blob: 'sha256:' prefix followed by "
-                        "the SHA-256 hex digest of the raw blob bytes."
+                        "Content-address of the managed blob. Present only when "
+                        "resource_type is managed."
                     ),
                 },
+                "uri": {"type": "string | null", "description": "Required external URI when resource_type is uri."},
+                "path": {"type": "string | null", "description": "Required local path when resource_type is local_file."},
+                "file_size": {"type": "integer | null", "minimum": 0, "description": "Verified byte length for local_file."},
+                "file_hash": {"type": "string | null", "pattern": "^sha256:[0-9a-f]{64}$", "description": "SHA-256 fingerprint for local_file."},
+                "last_verified": {"type": "string | null", "format": "ISO-8601 datetime", "description": "Time local_file metadata was last verified."},
+            },
+            "resource_rules": {
+                "managed": "requires blob_hash and media_type; excludes uri/local-file fields",
+                "uri": "requires uri; media_type is an optional hint; excludes blob_hash/local-file fields",
+                "local_file": "requires path, file_size, file_hash, last_verified, and media_type; excludes uri/blob_hash",
             },
         },
         "edge": {
@@ -111,8 +128,51 @@ _EVENT_BODY_SCHEMA: Dict[str, Any] = {
                     "type": "UUID v7 string",
                     "description": "node_id of the edge's target node.",
                 },
+                "title": {"type": "string | null"},
+                "resource_type": {"$ref": "node.resource_type"},
                 "media_type": {"$ref": "node.media_type"},
                 "blob_hash": {"$ref": "node.blob_hash"},
+                "uri": {"$ref": "node.uri"},
+                "path": {"$ref": "node.path"},
+                "file_size": {"$ref": "node.file_size"},
+                "file_hash": {"$ref": "node.file_hash"},
+                "last_verified": {"$ref": "node.last_verified"},
+            },
+        },
+        "supersede_node": {
+            "discriminator": "body_type = 'supersede_node'",
+            "fields": {
+                "body_type": {"const": "supersede_node"},
+                "event_type": {"const": "supersede_node"},
+                "node_id": {"type": "UUID v7 string", "description": "ID of an existing node to supersede."},
+                "title": {"type": "string | null"},
+                "resource_type": {"$ref": "node.resource_type"},
+                "media_type": {"$ref": "node.media_type"},
+                "blob_hash": {"$ref": "node.blob_hash"},
+                "uri": {"$ref": "node.uri"},
+                "path": {"$ref": "node.path"},
+                "file_size": {"$ref": "node.file_size"},
+                "file_hash": {"$ref": "node.file_hash"},
+                "last_verified": {"$ref": "node.last_verified"},
+            },
+        },
+        "supersede_edge": {
+            "discriminator": "body_type = 'supersede_edge'",
+            "fields": {
+                "body_type": {"const": "supersede_edge"},
+                "event_type": {"const": "supersede_edge"},
+                "edge_id": {"type": "UUID v7 string", "description": "ID of an existing edge to supersede."},
+                "source_node": {"type": "UUID v7 string", "description": "Must equal the existing edge source."},
+                "target_node": {"type": "UUID v7 string", "description": "Must equal the existing edge target."},
+                "title": {"type": "string | null"},
+                "resource_type": {"$ref": "node.resource_type"},
+                "media_type": {"$ref": "node.media_type"},
+                "blob_hash": {"$ref": "node.blob_hash"},
+                "uri": {"$ref": "node.uri"},
+                "path": {"$ref": "node.path"},
+                "file_size": {"$ref": "node.file_size"},
+                "file_hash": {"$ref": "node.file_hash"},
+                "last_verified": {"$ref": "node.last_verified"},
             },
         },
     },

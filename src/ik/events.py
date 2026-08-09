@@ -4,12 +4,16 @@ from uuid import UUID
 from ik.signing import sign_event
 from ik.blob import Archive, ArchiveIndex
 from ik.models import (
+    EVENT_FORMAT_VERSION,
     EventModel,
     MetaEventModel,
     Node,
     EventHeader,
     MetaEventHeader,
     Edge,
+    SupersedeNode,
+    SupersedeEdge,
+    ResourceType,
     MetaEdge,
     EventType,
     MetaEventType,
@@ -48,14 +52,16 @@ def create_representation(
     return uuid_to_return
 
 
-def create_event(body: Node | Edge, public_key: str, archive: Archive) -> EventModel:
-
+def create_event(
+    body: Node | Edge | SupersedeNode | SupersedeEdge,
+    public_key: str,
+    archive: Archive,
+) -> EventModel:
+    """Build an unsigned base-network event linked to the archive head."""
     prev_hash = archive.last_event_hash_ if archive.nevents_ else None
 
-    return EventModel(  # signatre None at creation
-        header=EventHeader(  # timestamp default factory
-            version="1.0", prev_hash=prev_hash, author=public_key
-        ),
+    return EventModel(
+        header=EventHeader(version=EVENT_FORMAT_VERSION, prev_hash=prev_hash, author=public_key),
         body=body,
     )
 
@@ -65,26 +71,45 @@ def create_meta_event(
     public_key: str,
     archive_idx: ArchiveIndex,
 ) -> MetaEventModel:
-
+    """Build an unsigned tag-network event linked to the meta-log head."""
     prev_hash = (
         archive_idx.last_meta_event_hash_ if archive_idx.n_meta_events_ else None
     )
 
-    return MetaEventModel(  # signatre None at creation
-        header=MetaEventHeader(  # timestamp default factory
-            version="1.0", prev_hash=prev_hash, author=public_key
-        ),
+    return MetaEventModel(
+        header=MetaEventHeader(version=EVENT_FORMAT_VERSION, prev_hash=prev_hash, author=public_key),
         body=body,
     )
 
 
-def create_vertex(title, blob_hash, data_type, blob_hash_prefix) -> Node:
-    return Node(  # node_id default factory
-        title=title,
-        event_type=EventType.CREATE_NODE,
-        media_type=data_type,
-        blob_hash=blob_hash_prefix + blob_hash,
-    )
+def create_vertex(
+    *,
+    title: str | None,
+    resource_type: ResourceType = ResourceType.MANAGED,
+    blob_hash: str | None = None,
+    data_type=None,
+    blob_hash_prefix: str = "sha256:",
+    uri: str | None = None,
+    path: str | None = None,
+    file_size: int | None = None,
+    file_hash: str | None = None,
+    last_verified=None,
+) -> Node:
+    """Create a node body for managed, URI, or local-file resources."""
+    kwargs = {
+        "title": title,
+        "resource_type": resource_type,
+        "media_type": data_type,
+        "uri": uri,
+        "path": path,
+        "file_size": file_size,
+        "last_verified": last_verified,
+    }
+    if blob_hash is not None:
+        kwargs["blob_hash"] = blob_hash if blob_hash.startswith(blob_hash_prefix) else blob_hash_prefix + blob_hash
+    if file_hash is not None:
+        kwargs["file_hash"] = file_hash if file_hash.startswith(blob_hash_prefix) else blob_hash_prefix + file_hash
+    return Node(**kwargs)
 
 
 def create_meta_vertex(
@@ -107,11 +132,13 @@ def create_meta_vertex(
     attr set.
     """
     if tag is None:
-        assert underlying_id is not None
+        if underlying_id is None or meta_event_type is None:
+            raise ValueError("A representation requires an underlying ID and event type")
         return MetaRepresentation(
             event_type=meta_event_type, underlying_id=underlying_id
         )
-    assert underlying_id is None
+    if underlying_id is not None:
+        raise ValueError("A tag cannot also reference an underlying ID")
     return tag
 
 
@@ -184,18 +211,17 @@ def create_meta_edge(
         raise ValueError(f"SOURCE NODE {source_id} NOT FOUND IN ARCHIVE'S META NETWORK")
     is_edge_tag = source_info["is_edge_tag"]
     is_node_tag = source_info["is_node_tag"]
-    assert is_edge_tag or is_node_tag, "Source meta node should be a tag"
+    if not (is_edge_tag or is_node_tag):
+        raise ValueError("Source meta node should be a tag")
     try:
         target_info = meta_nodes[target_id]
         if is_node_tag:
-            assert target_info[
-                "is_node_representation"
-            ], "A node tag should point to a node representation"
+            if not target_info["is_node_representation"]:
+                raise ValueError("A node tag should point to a node representation")
             event_type = MetaEventType.SET_NODE_TAG
         if is_edge_tag:
-            assert target_info[
-                "is_edge_representation"
-            ], "An edge tag should point to an edge representation"
+            if not target_info["is_edge_representation"]:
+                raise ValueError("An edge tag should point to an edge representation")
             event_type = MetaEventType.SET_EDGE_TAG
     except KeyError:
         raise ValueError(f"TARGET NODE {target_id} NOT FOUND IN ARCHIVE'S META NETWORK")
@@ -208,48 +234,29 @@ def create_meta_edge(
 
 
 def sign_unsigned_event(event, signing_key):
+    """Add an Ed25519 signature over an event body in-place."""
     event.signature = sign_event(event.body, signing_key)
 
 
-def write_event(event: EventModel, signing_key, arc_idx: ArchiveIndex):
-
+def _write_event(event: EventModel | MetaEventModel, signing_key, log_root: str, label: str) -> None:
+    """Sign and append an event to its date-sharded NDJSON log."""
     sign_unsigned_event(event, signing_key)
-
-    # Extract date from event header
     ts = event.header.timestamp
-
-    # Create path: /archive/events/YYYY/MM/DD/
-    dir_path = os.path.join(
-        arc_idx.arc.event_log.path_event_log, ts.strftime("%Y/%m/%d")
-    )
+    dir_path = os.path.join(log_root, ts.strftime("%Y/%m/%d"))
     os.makedirs(dir_path, exist_ok=True)
-
-    # Append to the daily log
     file_path = os.path.join(dir_path, "events.ndjson")
     event_json_str = event.model_dump_json()
     with open(file_path, "a", encoding="utf-8") as f:
         f.write(event_json_str + "\n")
-    logger.debug(f"EVENT {event_json_str} WRITTEN TO {file_path}")
+    logger.debug("%s %s written to %s", label, event_json_str, file_path)
     logger.info("****** Rebuild Archive and Index for subsequent work *****")
 
 
-def write_meta_event(event: MetaEventModel, signing_key, arc_idx: ArchiveIndex):
+def write_event(event: EventModel, signing_key, arc_idx: ArchiveIndex) -> None:
+    """Sign and persist a base-network event."""
+    _write_event(event, signing_key, str(arc_idx.arc.event_log.path_event_log), "EVENT")
 
-    sign_unsigned_event(event, signing_key)
 
-    # Extract date from event header
-    ts = event.header.timestamp
-
-    # Create path: /archive/events/YYYY/MM/DD/
-    dir_path = os.path.join(
-        arc_idx.arc.meta_event_log.path_event_log, ts.strftime("%Y/%m/%d")
-    )
-    os.makedirs(dir_path, exist_ok=True)
-
-    # Append to the daily log
-    file_path = os.path.join(dir_path, "events.ndjson")
-    event_json_str = event.model_dump_json()
-    with open(file_path, "a", encoding="utf-8") as f:
-        f.write(event_json_str + "\n")
-    logger.debug(f"META EVENT {event_json_str} WRITTEN TO {file_path}")
-    logger.info("****** Rebuild Archive and Index for subsequent work *****")
+def write_meta_event(event: MetaEventModel, signing_key, arc_idx: ArchiveIndex) -> None:
+    """Sign and persist a meta-network event."""
+    _write_event(event, signing_key, str(arc_idx.arc.meta_event_log.path_event_log), "META EVENT")

@@ -1,6 +1,6 @@
 """Code to generate and I/O blobs"""
 
-from typing import Any, Tuple
+from typing import Any
 import logging
 import os
 import json
@@ -168,7 +168,7 @@ class Archive:
             raise NotImplementedError()
         return self.blob_store.root_path
 
-    def check_archive_integrity(self, event_log) -> Tuple[str, int]:
+    def check_archive_integrity(self, event_log: InfraEventLog) -> tuple[str | None, int]:
         # TODO: currently doesn't check public keys against MANIFEST
         # TODO: if unreferenced blobs, at least mention it as a warning...
         # TODO: if dangling meta nodes with lost underlying items, throw an error
@@ -187,8 +187,9 @@ class Archive:
                 raise IntegrityError("Data tampered or bad author!")
 
             # 3. Check Blobs (if applicable)
-            if "blob_hash" in event["body"]:
-                if not self.verify_blob_on_disk(event["body"]["blob_hash"]):
+            blob_hash = event["body"].get("blob_hash")
+            if blob_hash:
+                if not self.verify_blob_on_disk(blob_hash):
                     raise IntegrityError("File corrupted or missing!")
 
             # prepare for next iteration
@@ -196,7 +197,8 @@ class Archive:
 
         return real_prev_hash, ecount + int(real_prev_hash is not None)
 
-    def verify_blob_on_disk(self, blob_hash):  # TODO: delegate this to InfraBlobStore
+    def verify_blob_on_disk(self, blob_hash: str) -> bool:
+        """Return whether the content-addressed blob exists and matches its hash."""
         binary_data = self.blob_store.load_bin_blob(blob_hash)
         real_hash = self.blob_store._get_blob_hash(binary_data)
         given = blob_hash[len(self.blob_store.blob_hash_prefix) :]
@@ -254,145 +256,122 @@ class ArchiveIndex:
     def n_meta_events_(self):
         return self.arc.n_meta_events_
 
-    def _build_index(self):
-        """Build a simple index
+    def _build_index(self) -> None:
+        """Build current graph state from immutable base and meta event streams.
 
-        Side effect: sets the following three attr
-            self.human_to_machine_id_
-            self.id_info_
-            self.repr_id_to_underlying_id_
+        Creation events allocate human-friendly IDs.  Supersede events do not
+        allocate a new ID; they replace the indexed projection for the original
+        item while every historical event remains in the event log.
         """
-
-        idmap = {}
-        """Apply eX and mX patterns to graph items
-
-        With X an integer growing in chronological order,
-        eX denotes a node or edge
-        mX denotes a node or edge in the meta network
-        """
-
-        id_info = {}  # info about al items in both networks
-        meta_to_base_id = {}
+        idmap: dict[str, str] = {}
+        id_info: dict[UUID, dict[str, Any]] = {}
+        meta_to_base_id: dict[UUID, UUID] = {}
         item_count = 0
-        logger.debug("...building index looping through events...")
+
         for event in self.arc.event_log:
-            if event["body"]["event_type"] in {
-                EventType.CREATE_EDGE.value,
-                EventType.CREATE_NODE.value,
-            }:
+            body = event["body"]
+            event_type = body.get("event_type")
+            if event_type in {EventType.CREATE_NODE.value, EventType.CREATE_EDGE.value}:
                 item_count += 1
-                try:
-                    item_id = event["body"]["node_id"]
-                    is_edge = False
-                except KeyError:
-                    item_id = event["body"]["edge_id"]
-                    is_edge = True
-                idmap["e" + str(item_count)] = item_id
-                id_info[UUID(item_id)] = {
+                is_edge = event_type == EventType.CREATE_EDGE.value
+                item_id = body["edge_id"] if is_edge else body["node_id"]
+                item_uuid = UUID(item_id)
+                idmap[f"e{item_count}"] = item_id
+                id_info[item_uuid] = {
                     "is_meta": False,
                     "is_edge": is_edge,
                     "author": event["header"]["author"],
-                    "tags": set(),  # will get filled when parsing meta events
-                    "body": event["body"].copy(),
+                    "tags": set(),
+                    "body": body.copy(),
                 }
-            logger.debug(f"*** {item_count=}  {item_id=}")
+            elif event_type in {EventType.SUPERSEDE_NODE.value, EventType.SUPERSEDE_EDGE.value}:
+                is_edge = event_type == EventType.SUPERSEDE_EDGE.value
+                item_id = body["edge_id"] if is_edge else body["node_id"]
+                item_uuid = UUID(item_id)
+                previous = id_info.get(item_uuid)
+                if previous is None:
+                    raise IntegrityError(f"Supersede event references unknown item {item_id}")
+                if previous["is_edge"] != is_edge:
+                    raise IntegrityError(f"Supersede event type does not match item {item_id}")
+                if is_edge:
+                    for endpoint in ("source_node", "target_node"):
+                        if str(previous["body"].get(endpoint)) != str(body.get(endpoint)):
+                            raise IntegrityError("Supersede edge events cannot change endpoints")
+                previous["author"] = event["header"]["author"]
+                previous["body"] = body.copy()
 
         item_count = 0
-        logger.debug("...building index looping through meta events...")
         for meta_event in self.arc.meta_event_log:
             body = meta_event["body"]
             event_type = body["event_type"]
-            if event_type in {
+            is_creation = event_type in {
                 MetaEventType.CREATE_EDGE_TAG.value,
                 MetaEventType.CREATE_NODE_TAG.value,
                 MetaEventType.CREATE_EDGE_REPRESENTATION.value,
                 MetaEventType.CREATE_NODE_REPRESENTATION.value,
                 MetaEventType.SET_EDGE_TAG.value,
                 MetaEventType.SET_NODE_TAG.value,
-            }:
+            }
+            if is_creation:
                 item_count += 1
-                try:
-                    item_id = body["node_id"]
-                    is_edge = False
-                except KeyError:
-                    item_id = body["edge_id"]
-                    is_edge = True
-                idmap["m" + str(item_count)] = item_id
-
+                is_edge = "edge_id" in body
+                item_id = body["edge_id"] if is_edge else body["node_id"]
                 item_uuid = UUID(item_id)
+                idmap[f"m{item_count}"] = item_id
                 id_info[item_uuid] = {
                     "is_meta": True,
                     "is_edge": is_edge,
                     "is_edge_tag": event_type == MetaEventType.CREATE_EDGE_TAG.value,
                     "is_node_tag": event_type == MetaEventType.CREATE_NODE_TAG.value,
-                    "is_edge_representation": event_type
-                    == MetaEventType.CREATE_EDGE_REPRESENTATION.value,
-                    "is_node_representation": event_type
-                    == MetaEventType.CREATE_NODE_REPRESENTATION.value,
+                    "is_edge_representation": event_type == MetaEventType.CREATE_EDGE_REPRESENTATION.value,
+                    "is_node_representation": event_type == MetaEventType.CREATE_NODE_REPRESENTATION.value,
                     "author": meta_event["header"]["author"],
                     "body": body.copy(),
                 }
-            if event_type in {
-                MetaEventType.CREATE_EDGE_REPRESENTATION.value,
-                MetaEventType.CREATE_NODE_REPRESENTATION.value,
-            }:
+            if event_type in {MetaEventType.CREATE_EDGE_REPRESENTATION.value, MetaEventType.CREATE_NODE_REPRESENTATION.value}:
                 meta_to_base_id[UUID(body["node_id"])] = UUID(body["underlying_id"])
-            if body["event_type"] in {
-                MetaEventType.SET_EDGE_TAG.value,
-                MetaEventType.SET_NODE_TAG.value,
-            }:
+            if event_type in {MetaEventType.SET_EDGE_TAG.value, MetaEventType.SET_NODE_TAG.value}:
                 meta_node_id = UUID(body["target_node"])
-                underlying_uuid = meta_to_base_id[meta_node_id]
-                current_tag_uuid = UUID(body["source_node"])
-                id_info[underlying_uuid]["tags"].update({current_tag_uuid})
-            logger.debug(f"*** {item_count=}  {item_id=}")
+                underlying_uuid = meta_to_base_id.get(meta_node_id)
+                if underlying_uuid is None or underlying_uuid not in id_info:
+                    raise IntegrityError("Tag assignment references an unknown representation")
+                id_info[underlying_uuid]["tags"].add(UUID(body["source_node"]))
+
         self.human_to_machine_id_ = idmap
         self.id_info_ = id_info
         self.repr_id_to_underlying_id_ = meta_to_base_id
 
-    def update_id_mappings(self, event: EventModel | MetaEventModel):
-        # TODO: Consolidate with self.build_index() to reduce code redundancy
-        def get_latest_int(pref):
-            if len(self.human_to_machine_id_.keys()):
-                return max(
-                    map(
-                        lambda s: int(s[len(pref) :]) if s.startswith(pref) else 0,
-                        self.human_to_machine_id_.keys(),
-                    )
-                )
-            else:
-                return 0
+    def update_id_mappings(self, event: EventModel | MetaEventModel) -> None:
+        """Update the in-memory mapping for an event written in this process.
 
-        if isinstance(event, EventModel):
-            prefix = "e"
-        elif isinstance(event, MetaEventModel):
-            prefix = "m"
-        else:
-            raise ValueError("Invalid event type")
-        if event.body.event_type in {
-            EventType.CREATE_EDGE,
-            EventType.CREATE_NODE,
-            MetaEventType.CREATE_EDGE_TAG,
-            MetaEventType.CREATE_NODE_TAG,
-            MetaEventType.CREATE_EDGE_REPRESENTATION,
-            MetaEventType.CREATE_NODE_REPRESENTATION,
-            MetaEventType.SET_EDGE_TAG,
-            MetaEventType.SET_NODE_TAG,
-        }:
-            try:
-                item_id = str(event.body.node_id)
-            except AttributeError:
-                item_id = str(event.body.edge_id)
-            human_id = prefix + str(get_latest_int(prefix) + 1)
-            self.human_to_machine_id_[human_id] = item_id
-            self.machine_to_human_id_[item_id] = human_id
+        Callers that need tags and full graph state should use :meth:`refresh`;
+        this lightweight method keeps IDs usable between writes.  Supersedes
+        retain the existing human-friendly mapping and update the active body.
+        """
+        body = event.body.model_dump(mode="json")
+        if isinstance(event, EventModel) and event.body.event_type in {EventType.SUPERSEDE_NODE, EventType.SUPERSEDE_EDGE}:
+            item_id = str(getattr(event.body, "edge_id", getattr(event.body, "node_id", "")))
+            item_uuid = UUID(item_id)
+            if item_uuid not in self.id_info_:
+                raise ValueError(f"Cannot supersede unknown item {item_id}")
+            self.id_info_[item_uuid]["body"] = body
+            self.id_info_[item_uuid]["author"] = event.header.author
+            return
+
+        prefix = "e" if isinstance(event, EventModel) else "m"
+        item_id = str(getattr(event.body, "edge_id", getattr(event.body, "node_id", "")))
+        existing = [int(key[1:]) for key in self.human_to_machine_id_ if key.startswith(prefix) and key[1:].isdigit()]
+        human_id = f"{prefix}{max(existing, default=0) + 1}"
+        self.human_to_machine_id_[human_id] = item_id
+        self.machine_to_human_id_[item_id] = human_id
 
     def assert_node_is_tag(self, node_id: UUID) -> None:
-        assert self.id_info_[node_id]["is_meta"]
-        assert (
-            self.id_info_[node_id]["is_edge_tag"]
-            or self.id_info_[node_id]["is_node_tag"]
-        )
+        """Raise when ``node_id`` is not a tag node in the meta network."""
+        info = self.id_info_[node_id]
+        if not info["is_meta"] or not (info["is_edge_tag"] or info["is_node_tag"]):
+            raise ValueError(f"{node_id} is not a tag node")
 
     def confirm_tag_authorship(self, pubkey: str, node_id: UUID):
-        assert pubkey == self.id_info_[node_id]["author"]
+        """Raise when a tag is not owned by ``pubkey``."""
+        if pubkey != self.id_info_[node_id]["author"]:
+            raise ValueError("Only the tag's author may use this operation")

@@ -9,6 +9,8 @@ from ik.signing import get_signing_key
 from ik.blob import InfraBlobStore, InfraEventLog, Archive, ArchiveIndex
 import ik.create_node as create_node
 import ik.create_edge as create_edge
+import ik.supersede_node as supersede_node
+import ik.supersede_edge as supersede_edge
 import ik.create_edge_tag as create_edge_tag
 import ik.create_node_tag as create_node_tag
 import ik.set_tag as set_tag
@@ -16,6 +18,7 @@ import ik.read as read
 import ik.export as export
 import ik.ingest as ingest
 import ik.manifest as manifest_mod
+from ik.models import MediaType, ResourceType
 
 
 def parse_comma_separated(value):
@@ -38,11 +41,37 @@ def main():
     # Command: $ ik create_node
     node_parser = subparsers.add_parser("create_node", help="Create a new node")
     node_parser.add_argument(
-        "--content", required=True, help="Text content attached to node"
+        "--content", required=False, help="Content or a supported file path for managed nodes"
     )
     node_parser.add_argument(
         "--title", required=False, default=None, help="Optional title for your node."
     )
+    node_parser.add_argument(
+        "--resource-type",
+        choices=[resource_type.value for resource_type in ResourceType],
+        default=ResourceType.MANAGED.value,
+        help="Resource storage strategy (default: managed).",
+    )
+    node_parser.add_argument("--uri", help="External URI for a uri node.")
+    node_parser.add_argument("--path", help="Local file path for a local_file node.")
+    node_parser.add_argument(
+        "--media-type",
+        choices=[media_type.value for media_type in MediaType],
+        help="Optional media type hint for URI nodes.",
+    )
+
+    supersede_node_parser = subparsers.add_parser(
+        "supersede_node", help="Append replacement content for an existing node"
+    )
+    supersede_node_parser.add_argument("--node-id", required=True, help="Node UUID or human-friendly ID")
+    supersede_node_parser.add_argument("--content", required=True, help="Replacement Markdown content")
+    supersede_node_parser.add_argument("--title", help="Replacement title (keeps existing title when omitted)")
+
+    supersede_edge_parser = subparsers.add_parser(
+        "supersede_edge", help="Append replacement content for an existing edge"
+    )
+    supersede_edge_parser.add_argument("--edge-id", required=True, help="Edge UUID or human-friendly ID")
+    supersede_edge_parser.add_argument("--content", required=True, help="Replacement text content")
 
     # Command: $ ik create_edge
     edge_parser = subparsers.add_parser("create_edge", help="Create a new edge")
@@ -174,17 +203,46 @@ def main():
 
     # Route to your scripts based on the command
     if args.command == "create_node":
-        processed_content, inferred_media_type = create_node.extract_content_and_mime(
-            args.content
-        )
-        create_node.run(
+        resource_type = ResourceType(args.resource_type)
+        processed_content = None
+        inferred_media_type = MediaType(args.media_type) if args.media_type else None
+        if resource_type is ResourceType.MANAGED:
+            if not args.content:
+                parser.error("create_node --content is required for managed nodes")
+            processed_content, inferred_media_type = create_node.extract_content_and_mime(args.content)
+        node_id = create_node.run(
             node_content=processed_content,
             node_title=args.title,
             curr_public_key=curr_public_key,
             curr_signing_key=curr_signing_key,
             archive_idx=archive_index,
             media_type=inferred_media_type,
+            resource_type=resource_type,
+            uri=args.uri,
+            path=args.path,
         )
+        print(f"Node created: {node_id}")
+
+    elif args.command == "supersede_node":
+        node_id = supersede_node.run(
+            node_id=args.node_id,
+            content=args.content,
+            title=args.title,
+            curr_public_key=curr_public_key,
+            curr_signing_key=curr_signing_key,
+            archive_idx=archive_index,
+        )
+        print(f"Node superseded: {node_id}")
+
+    elif args.command == "supersede_edge":
+        edge_id = supersede_edge.run(
+            edge_id=args.edge_id,
+            content=args.content,
+            curr_public_key=curr_public_key,
+            curr_signing_key=curr_signing_key,
+            archive_idx=archive_index,
+        )
+        print(f"Edge superseded: {edge_id}")
 
     elif args.command == "create_edge":
         create_edge.run(
