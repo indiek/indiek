@@ -210,9 +210,13 @@ def main():
             if not args.content:
                 parser.error("create_node --content is required for managed nodes")
             processed_content, inferred_media_type = create_node.extract_content_and_mime(args.content)
+        node_title = args.title
+        if node_title is None and args.content and Path(args.content).is_file():
+            node_title = Path(args.content).stem
+
         node_id = create_node.run(
             node_content=processed_content,
-            node_title=args.title,
+            node_title=node_title,
             curr_public_key=curr_public_key,
             curr_signing_key=curr_signing_key,
             archive_idx=archive_index,
