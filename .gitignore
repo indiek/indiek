@@ -10,3 +10,4 @@ lib
 .env.genesis
 *zip
 sandbox
+tests/__pycache__
