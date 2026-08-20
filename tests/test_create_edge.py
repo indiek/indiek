@@ -86,7 +86,6 @@ def test_create_edge_alias_numbering_includes_edges(
     two_nodes: tuple[str, str],
 ) -> None:
     """The alias counter is shared by nodes and edges, so the first edge is e3."""
-    _ = two_nodes
     run_cli(
         "create_edge",
         "--content",
@@ -104,15 +103,15 @@ def test_create_edge_alias_numbering_includes_edges(
         "--source-node",
         "e4",
         "--target-node",
-        "e3",
+        "e2",
     )
 
     events = base_events()
-    first_edge_id = events[2]["body"]["edge_id"]
+    second_node_id = events[1]["body"]["node_id"]
     third_node_id = events[3]["body"]["node_id"]
     last = events[-1]["body"]
     assert last["source_node"] == third_node_id
-    assert last["target_node"] == first_edge_id
+    assert last["target_node"] == second_node_id
 
 
 def test_create_edge_self_loop_is_allowed(
