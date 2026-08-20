@@ -15,3 +15,4 @@ def run(*, tag_name, tag_description, curr_public_key, curr_signing_key, archive
         body=body, public_key=curr_public_key, archive_idx=archive_index
     )
     write_meta_event(event, curr_signing_key, archive_index)
+    return str(body.node_id)

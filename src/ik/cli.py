@@ -288,13 +288,14 @@ def main():
             archive_index,
         )
     elif args.command == "create_edge_tag":
-        create_edge_tag.run(
+        node_id = create_edge_tag.run(
             tag_name=args.name,
             tag_description=args.description,
             curr_public_key=curr_public_key,
             curr_signing_key=curr_signing_key,
             archive_index=archive_index,
         )
+        print(f"Meta node created: {node_id}")
     elif args.command == "create_node_tag":
         create_node_tag.run(
             tag_name=args.name,
