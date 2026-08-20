@@ -18,6 +18,7 @@ import ik.read as read
 import ik.export as export
 import ik.ingest as ingest
 import ik.manifest as manifest_mod
+import ik.cfg as cfg
 from ik.models import MediaType, ResourceType
 
 
@@ -39,9 +40,18 @@ def main():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Command: $ ik create_node
+    cfg_parser = subparsers.add_parser("config", help="Read or set config")
+    cfg_parser.add_argument(
+        "--set-archive-path",
+        required=False,
+        help="Path to archive you wish to write to your .env file",
+        default=None,
+    )
     node_parser = subparsers.add_parser("create_node", help="Create a new node")
     node_parser.add_argument(
-        "--content", required=False, help="Content or a supported file path for managed nodes"
+        "--content",
+        required=False,
+        help="Content or a supported file path for managed nodes",
     )
     node_parser.add_argument(
         "--title", required=False, default=None, help="Optional title for your node."
@@ -63,15 +73,25 @@ def main():
     supersede_node_parser = subparsers.add_parser(
         "supersede_node", help="Append replacement content for an existing node"
     )
-    supersede_node_parser.add_argument("--node-id", required=True, help="Node UUID or human-friendly ID")
-    supersede_node_parser.add_argument("--content", required=True, help="Replacement Markdown content")
-    supersede_node_parser.add_argument("--title", help="Replacement title (keeps existing title when omitted)")
+    supersede_node_parser.add_argument(
+        "--node-id", required=True, help="Node UUID or human-friendly ID"
+    )
+    supersede_node_parser.add_argument(
+        "--content", required=True, help="Replacement Markdown content"
+    )
+    supersede_node_parser.add_argument(
+        "--title", help="Replacement title (keeps existing title when omitted)"
+    )
 
     supersede_edge_parser = subparsers.add_parser(
         "supersede_edge", help="Append replacement content for an existing edge"
     )
-    supersede_edge_parser.add_argument("--edge-id", required=True, help="Edge UUID or human-friendly ID")
-    supersede_edge_parser.add_argument("--content", required=True, help="Replacement text content")
+    supersede_edge_parser.add_argument(
+        "--edge-id", required=True, help="Edge UUID or human-friendly ID"
+    )
+    supersede_edge_parser.add_argument(
+        "--content", required=True, help="Replacement text content"
+    )
 
     # Command: $ ik create_edge
     edge_parser = subparsers.add_parser("create_edge", help="Create a new edge")
@@ -191,8 +211,9 @@ def main():
     ).decode("utf-8")
 
     # SETUP ARCHIVE
-    rootp = Path(os.getenv("IK_ARCHIVE_PATH"))  # TODO: use pathlib.Path
-    logger.debug(f"{os.getenv("IK_ARCHIVE_PATH")=}")
+    set_arc_path = os.getenv("IK_ARCHIVE_PATH")
+    logger.debug(f"{set_arc_path=}")
+    rootp = Path(set_arc_path)
     infra_blob = InfraBlobStore(archive_root=rootp)
     elog = InfraEventLog(rootp)
     meta_log = InfraEventLog(os.path.join(rootp, "meta"))
@@ -202,14 +223,23 @@ def main():
     # TODO: for the blob writing events; add a cleaning last step to erase written blob if event persistence failed
 
     # Route to your scripts based on the command
-    if args.command == "create_node":
+    if args.command == "config":
+        cfg.run(
+            arc_path=set_arc_path,
+            set_arc_path=args.set_archive_path,
+            dotenv_path=args.dot_env,
+        )
+
+    elif args.command == "create_node":
         resource_type = ResourceType(args.resource_type)
         processed_content = None
         inferred_media_type = MediaType(args.media_type) if args.media_type else None
         if resource_type is ResourceType.MANAGED:
             if not args.content:
                 parser.error("create_node --content is required for managed nodes")
-            processed_content, inferred_media_type = create_node.extract_content_and_mime(args.content)
+            processed_content, inferred_media_type = (
+                create_node.extract_content_and_mime(args.content)
+            )
         node_title = args.title
         if node_title is None and args.content and Path(args.content).is_file():
             node_title = Path(args.content).stem
