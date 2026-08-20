@@ -158,7 +158,7 @@ Semantics and limits:
 - Edges are directed. Endpoints are immutable: `supersede_edge` may replace an
   edge's content but the index rejects any attempt to change `source_node` or
   `target_node`.
-- Prints nothing on success. Use `ik read` to recover the new `e{n}` alias.
+- Prints `Edge created: <uuid>` on success. Use `ik read` to recover the new `e{n}` alias.
 
 ```bash
 ik create_edge --content "generalises" --source-node e1 --target-node e2
@@ -185,7 +185,7 @@ Notes:
 - The tag is written with the current author's public key. That author is the
   only one who may later use it — see `set_tag`.
 - The new tag receives the next `m{n}` alias.
-- Prints nothing on success.
+- Prints `Meta node created: <uuid>` on success.
 
 ```bash
 ik create_edge_tag --name "conjecture" --description "Unproven claimed relation"
