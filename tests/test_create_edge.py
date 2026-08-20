@@ -28,9 +28,18 @@ def test_create_edge_by_uuid(
     blob_paths: Callable[[], list[Path]],
     author_public_key: str,
     two_nodes: tuple[str, str],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     source, target = two_nodes
-    run_cli("create_edge", "--content", "implies", "--source-node", source, "--target-node", target)
+    run_cli(
+        "create_edge",
+        "--content",
+        "implies",
+        "--source-node",
+        source,
+        "--target-node",
+        target,
+    )
 
     events = base_events()
     assert len(events) == 3
@@ -46,6 +55,7 @@ def test_create_edge_by_uuid(
 
     edge_blob = next(path for path in blob_paths() if path.read_bytes() == b"implies")
     assert edge_blob.name == body["blob_hash"].removeprefix("sha256:")
+    assert f"Edge created: {body['edge_id']}" in capsys.readouterr().out
 
 
 def test_create_edge_resolves_human_friendly_aliases(
@@ -55,7 +65,15 @@ def test_create_edge_resolves_human_friendly_aliases(
 ) -> None:
     source, target = two_nodes
     # Base-network creation events are aliased e1, e2, ... in log order.
-    run_cli("create_edge", "--content", "cites", "--source-node", "e1", "--target-node", "e2")
+    run_cli(
+        "create_edge",
+        "--content",
+        "cites",
+        "--source-node",
+        "e1",
+        "--target-node",
+        "e2",
+    )
 
     body = base_events()[-1]["body"]
     assert body["source_node"] == source
@@ -68,9 +86,26 @@ def test_create_edge_alias_numbering_includes_edges(
     two_nodes: tuple[str, str],
 ) -> None:
     """The alias counter is shared by nodes and edges, so the first edge is e3."""
-    run_cli("create_edge", "--content", "first", "--source-node", "e1", "--target-node", "e2")
+    _ = two_nodes
+    run_cli(
+        "create_edge",
+        "--content",
+        "first",
+        "--source-node",
+        "e1",
+        "--target-node",
+        "e2",
+    )
     run_cli("create_node", "--content", "third node")
-    run_cli("create_edge", "--content", "second", "--source-node", "e4", "--target-node", "e3")
+    run_cli(
+        "create_edge",
+        "--content",
+        "second",
+        "--source-node",
+        "e4",
+        "--target-node",
+        "e3",
+    )
 
     events = base_events()
     first_edge_id = events[2]["body"]["edge_id"]
@@ -86,7 +121,9 @@ def test_create_edge_self_loop_is_allowed(
     two_nodes: tuple[str, str],
 ) -> None:
     source, _ = two_nodes
-    run_cli("create_edge", "--content", "self", "--source-node", "e1", "--target-node", "e1")
+    run_cli(
+        "create_edge", "--content", "self", "--source-node", "e1", "--target-node", "e1"
+    )
 
     body = base_events()[-1]["body"]
     assert body["source_node"] == body["target_node"] == source
@@ -98,7 +135,15 @@ def test_create_edge_rejects_unknown_alias(
     two_nodes: tuple[str, str],
 ) -> None:
     with pytest.raises(ValueError):
-        run_cli("create_edge", "--content", "dangling", "--source-node", "e1", "--target-node", "e99")
+        run_cli(
+            "create_edge",
+            "--content",
+            "dangling",
+            "--source-node",
+            "e1",
+            "--target-node",
+            "e99",
+        )
     # The failed command appended no event.
     assert len(base_events()) == 2
 
@@ -129,7 +174,15 @@ def test_create_edge_chains_onto_the_existing_log(
     base_events: Callable[[], list[dict[str, Any]]],
     two_nodes: tuple[str, str],
 ) -> None:
-    run_cli("create_edge", "--content", "links", "--source-node", "e1", "--target-node", "e2")
+    run_cli(
+        "create_edge",
+        "--content",
+        "links",
+        "--source-node",
+        "e1",
+        "--target-node",
+        "e2",
+    )
 
     events = base_events()
     assert events[-1]["header"]["prev_hash"] is not None

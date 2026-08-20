@@ -22,7 +22,9 @@ def _generate_author() -> tuple[str, str]:
     """Return an ephemeral ``(seed_hex, public_key_hex)`` Ed25519 pair."""
     signing_key = nacl.signing.SigningKey.generate()
     seed_hex = signing_key.encode(nacl.encoding.HexEncoder).decode("utf-8")
-    public_key_hex = signing_key.verify_key.encode(nacl.encoding.HexEncoder).decode("utf-8")
+    public_key_hex = signing_key.verify_key.encode(nacl.encoding.HexEncoder).decode(
+        "utf-8"
+    )
     return seed_hex, public_key_hex
 
 
@@ -76,7 +78,15 @@ def run_cli(
         monkeypatch.setenv("IK_ARCHIVE_PATH", str(archive_root))
         monkeypatch.setenv("IK_AUTHOR_PRIVATE_KEY", seed_hex or author_seed_hex)
         monkeypatch.setattr(
-            "sys.argv", ["ik", "--dot-env", str(empty_dotenv), *argv]
+            "sys.argv",
+            [
+                "ik",
+                "--dot-env",
+                str(empty_dotenv),
+                "--logging-level",
+                "CRITICAL",
+                *argv,
+            ],
         )
         ik.cli.main()
 

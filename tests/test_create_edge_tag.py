@@ -14,6 +14,7 @@ def test_create_edge_tag_writes_a_meta_event(
     base_events: Callable[[], list[dict[str, Any]]],
     blob_paths: Callable[[], list[Path]],
     author_public_key: str,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     run_cli("create_edge_tag", "--name", "topology", "--description", "About shapes")
 
@@ -32,6 +33,7 @@ def test_create_edge_tag_writes_a_meta_event(
     # A tag is pure metadata: no base event and no blob.
     assert base_events() == []
     assert blob_paths() == []
+    assert f"Meta node created: {body['node_id']}" in capsys.readouterr().out
 
 
 def test_meta_log_lives_under_the_meta_subdirectory(
