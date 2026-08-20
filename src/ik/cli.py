@@ -279,7 +279,7 @@ def main():
         print(f"Edge superseded: {edge_id}")
 
     elif args.command == "create_edge":
-        create_edge.run(
+        node_id = create_edge.run(
             args.content,
             args.source_node,
             args.target_node,
@@ -287,6 +287,7 @@ def main():
             curr_signing_key,
             archive_index,
         )
+        print(f"Edge created: {node_id}")
     elif args.command == "create_edge_tag":
         node_id = create_edge_tag.run(
             tag_name=args.name,
