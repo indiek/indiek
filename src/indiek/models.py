@@ -1,19 +1,34 @@
-"""Pydantic models for the versioned IndieK archive event format.
+"""   Copyright 2026 Adrian Ernesto Radillo
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+---
+
+Pydantic models for the versioned IndieK archive event format.
 
 Events are append-only records.  Creation events establish graph identifiers;
 supersede events update their current projection while retaining every previous
 signed record in the log.
 """
 
+import datetime
 from abc import ABC
 from datetime import datetime as dt
-import datetime
 from enum import Enum
 from typing import Annotated, Literal
 from uuid import UUID, uuid7
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-
 
 # Version 2 adds resource references and append-only supersede events.  Readers
 # must treat a missing resource_type in a version 1 event as ``managed``.

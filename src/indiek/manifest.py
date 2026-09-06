@@ -1,4 +1,20 @@
-"""Generate and update the MANIFEST.json for an IndieK archive.
+"""   Copyright 2026 Adrian Ernesto Radillo
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+---
+
+Generate and update the MANIFEST.json for an IndieK archive.
 
 The MANIFEST.json file is meant to be shipped alongside every archive so that
 any consumer — regardless of what software they are running — can understand
@@ -8,7 +24,6 @@ code or documentation.
 Design principle: the MANIFEST is a human- and machine-readable document that
 describes the *structure* of the archive.  It does NOT duplicate event data.
 """
-
 from __future__ import annotations
 
 import json
