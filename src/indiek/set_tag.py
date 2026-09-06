@@ -1,13 +1,14 @@
-from uuid import UUID
 import logging
-from ik.events import (
+from uuid import UUID
+
+from indiek.blob import Archive, ArchiveIndex
+from indiek.events import (
     create_meta_edge,
     create_meta_event,
-    write_meta_event,
     create_representation,
+    write_meta_event,
 )
-from ik.models import MetaEventType
-from ik.blob import ArchiveIndex, Archive
+from indiek.models import MetaEventType
 
 logger = logging.getLogger(__name__)
 

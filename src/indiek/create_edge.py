@@ -1,6 +1,7 @@
-from ik.models import MediaType
-from ik.events import create_edge, create_event, write_event
 from uuid import UUID
+
+from indiek.events import create_edge, create_event, write_event
+from indiek.models import MediaType
 
 
 def create_base_edge(

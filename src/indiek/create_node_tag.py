@@ -1,5 +1,5 @@
-from ik.models import Tag, MetaEventType
-from ik.events import create_meta_vertex, create_meta_event, write_meta_event
+from indiek.events import create_meta_event, create_meta_vertex, write_meta_event
+from indiek.models import MetaEventType, Tag
 
 
 def run(*, tag_name, tag_description, curr_public_key, curr_signing_key, archive_idx):

@@ -1,14 +1,21 @@
 """Code to generate and I/O blobs"""
 
-from typing import Any
+import hashlib
+import json
 import logging
 import os
-import json
-from uuid import UUID
 from pathlib import Path
-import hashlib
-from ik.signing import verify_signature, get_canonical_hash
-from ik.models import MediaType, EventType, MetaEventType, EventModel, MetaEventModel
+from typing import Any
+from uuid import UUID
+
+from indiek.models import (
+    EventModel,
+    EventType,
+    MediaType,
+    MetaEventModel,
+    MetaEventType,
+)
+from indiek.signing import get_canonical_hash, verify_signature
 
 logger = logging.getLogger(__name__)
 

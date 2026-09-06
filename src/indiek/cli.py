@@ -1,25 +1,27 @@
-import logging
 import argparse
-from pathlib import Path
+import logging
 import os
 import sys
+from pathlib import Path
+
 import nacl
 from dotenv import load_dotenv
-from ik.signing import get_signing_key
-from ik.blob import InfraBlobStore, InfraEventLog, Archive, ArchiveIndex
-import ik.create_node as create_node
-import ik.create_edge as create_edge
-import ik.supersede_node as supersede_node
-import ik.supersede_edge as supersede_edge
-import ik.create_edge_tag as create_edge_tag
-import ik.create_node_tag as create_node_tag
-import ik.set_tag as set_tag
-import ik.read as read
-import ik.export as export
-import ik.ingest as ingest
-import ik.manifest as manifest_mod
-import ik.cfg as cfg
-from ik.models import MediaType, ResourceType
+
+import indiek.cfg as cfg
+import indiek.create_edge as create_edge
+import indiek.create_edge_tag as create_edge_tag
+import indiek.create_node as create_node
+import indiek.create_node_tag as create_node_tag
+import indiek.export as export
+import indiek.ingest as ingest
+import indiek.manifest as manifest_mod
+import indiek.read as read
+import indiek.set_tag as set_tag
+import indiek.supersede_edge as supersede_edge
+import indiek.supersede_node as supersede_node
+from indiek.blob import Archive, ArchiveIndex, InfraBlobStore, InfraEventLog
+from indiek.models import MediaType, ResourceType
+from indiek.signing import get_signing_key
 
 
 def parse_comma_separated(value):

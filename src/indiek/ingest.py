@@ -1,9 +1,10 @@
 import logging
-from typing import Sequence
 from pathlib import Path
-from ik.blob import ArchiveIndex
-from ik.create_node import create_node_from_content, extract_content_and_mime
-from ik.create_edge import create_base_edge
+from typing import Sequence
+
+from indiek.blob import ArchiveIndex
+from indiek.create_edge import create_base_edge
+from indiek.create_node import create_node_from_content, extract_content_and_mime
 
 logger = logging.getLogger(__name__)
 

@@ -1,9 +1,10 @@
-from uuid import UUID
-from typing import Sequence, Iterable, Callable
 import xml.etree.ElementTree as ET
+from typing import Callable, Iterable, Sequence
+from uuid import UUID
 from xml.dom import minidom
-from ik.models import MediaType
-from ik.blob import ArchiveIndex
+
+from indiek.blob import ArchiveIndex
+from indiek.models import MediaType
 
 
 def build_graphml_tree(events: Iterable, blob_resolver: Callable) -> ET.ElementTree:

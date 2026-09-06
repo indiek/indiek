@@ -17,6 +17,8 @@ import nacl.encoding
 import nacl.signing
 import pytest
 
+from indiek import cli as ik_cli
+
 
 def _generate_author() -> tuple[str, str]:
     """Return an ephemeral ``(seed_hex, public_key_hex)`` Ed25519 pair."""
@@ -64,13 +66,12 @@ def run_cli(
     author_seed_hex: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Callable[..., None]:
-    """Invoke ``ik.cli.main()`` as if from the shell, against ``archive_root``.
+    """Invoke ``indiek.cli.main()`` as if from the shell, against ``archive_root``.
 
     ``--dot-env`` is pointed at a non-existent file so that ``load_dotenv`` is a
     no-op and only the environment set here is visible.  ``seed_hex`` lets a
     single test act as a different author.
     """
-    import ik.cli
 
     empty_dotenv = archive_root.parent / "absent.env"
 
@@ -88,7 +89,7 @@ def run_cli(
                 *argv,
             ],
         )
-        ik.cli.main()
+        ik_cli.main()
 
     return _run
 

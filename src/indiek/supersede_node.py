@@ -3,9 +3,9 @@
 from typing import Any
 from uuid import UUID
 
-from ik.blob import ArchiveIndex
-from ik.events import create_event, write_event
-from ik.models import MediaType, ResourceType, SupersedeNode
+from indiek.blob import ArchiveIndex
+from indiek.events import create_event, write_event
+from indiek.models import MediaType, ResourceType, SupersedeNode
 
 
 def resolve_node_id(archive_idx: ArchiveIndex, node_id: str) -> UUID:

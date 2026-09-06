@@ -1,7 +1,9 @@
-from typing import Dict, Any, Iterable
+from typing import Any, Dict, Iterable
+
 from rich.console import Console
 from rich.table import Table
-from ik.blob import ArchiveIndex
+
+from indiek.blob import ArchiveIndex
 
 
 def get_nested_value(data: Dict[str, Any], path: str) -> str:

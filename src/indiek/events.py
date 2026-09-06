@@ -1,25 +1,26 @@
-import os
 import logging
+import os
 from uuid import UUID
-from ik.signing import sign_event
-from ik.blob import Archive, ArchiveIndex
-from ik.models import (
+
+from indiek.blob import Archive, ArchiveIndex
+from indiek.models import (
     EVENT_FORMAT_VERSION,
-    EventModel,
-    MetaEventModel,
-    Node,
-    EventHeader,
-    MetaEventHeader,
     Edge,
-    SupersedeNode,
-    SupersedeEdge,
-    ResourceType,
-    MetaEdge,
+    EventHeader,
+    EventModel,
     EventType,
+    MetaEdge,
+    MetaEventHeader,
+    MetaEventModel,
     MetaEventType,
-    Tag,
     MetaRepresentation,
+    Node,
+    ResourceType,
+    SupersedeEdge,
+    SupersedeNode,
+    Tag,
 )
+from indiek.signing import sign_event
 
 logger = logging.getLogger(__name__)
 

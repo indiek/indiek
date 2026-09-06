@@ -1,14 +1,14 @@
 """Create managed, URI, and local-file nodes in an IndieK archive."""
 
-from datetime import datetime, timezone
 import hashlib
 import mimetypes
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ik.blob import ArchiveIndex
-from ik.events import create_event, create_vertex, write_event
-from ik.models import MediaType, ResourceType
+from indiek.blob import ArchiveIndex
+from indiek.events import create_event, create_vertex, write_event
+from indiek.models import MediaType, ResourceType
 
 
 def extract_content_and_mime(value: str) -> tuple[str | bytes, MediaType]:

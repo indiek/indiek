@@ -16,7 +16,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from ik.models import EVENT_FORMAT_VERSION
+from indiek.models import EVENT_FORMAT_VERSION
 
 logger = logging.getLogger(__name__)
 
