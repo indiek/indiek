@@ -1,4 +1,4 @@
-"""   Copyright 2026 Adrian Ernesto Radillo
+"""Copyright 2026 Adrian Ernesto Radillo
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -159,18 +159,44 @@ class EventBody(BaseModel, ABC):
         if self.resource_type is ResourceType.MANAGED:
             if self.blob_hash is None or self.media_type is None:
                 raise ValueError("managed resources require blob_hash and media_type")
-            if any(value is not None for value in (self.uri, self.path, self.file_size, self.file_hash, self.last_verified)):
-                raise ValueError("managed resources cannot include URI or local-file fields")
+            if any(
+                value is not None
+                for value in (
+                    self.uri,
+                    self.path,
+                    self.file_size,
+                    self.file_hash,
+                    self.last_verified,
+                )
+            ):
+                raise ValueError(
+                    "managed resources cannot include URI or local-file fields"
+                )
         elif self.resource_type is ResourceType.URI:
             if not self.uri:
                 raise ValueError("uri resources require uri")
             if self.blob_hash is not None:
                 raise ValueError("uri resources cannot include blob_hash")
-            if any(value is not None for value in (self.path, self.file_size, self.file_hash, self.last_verified)):
+            if any(
+                value is not None
+                for value in (
+                    self.path,
+                    self.file_size,
+                    self.file_hash,
+                    self.last_verified,
+                )
+            ):
                 raise ValueError("uri resources cannot include local-file fields")
         else:
-            if not self.path or self.file_size is None or self.file_hash is None or self.last_verified is None:
-                raise ValueError("local_file resources require path, file_size, file_hash, and last_verified")
+            if (
+                not self.path
+                or self.file_size is None
+                or self.file_hash is None
+                or self.last_verified is None
+            ):
+                raise ValueError(
+                    "local_file resources require path, file_size, file_hash, and last_verified"
+                )
             if self.media_type is None:
                 raise ValueError("local_file resources require media_type")
             if self.blob_hash is not None or self.uri is not None:

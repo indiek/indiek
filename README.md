@@ -1,6 +1,7 @@
 # `ik` CLI — API Reference
 
-Reference for four commands: `create_node`, `create_edge`, `create_edge_tag`, `set_tag`.
+Reference for five commands: `create_node`, `create_edge`, `create_edge_tag`,
+`create_node_tag`, `set_tag`.
 
 ## Invocation shape
 
@@ -193,6 +194,18 @@ ik create_edge_tag --name "conjecture" --description "Unproven claimed relation"
 
 ---
 
+## `ik create_node_tag`
+
+Identical to `create_edge_tag` (same flags, same notes), except that it appends
+a `create_node_tag` event, defining a tag intended for **nodes**. Only node tags
+can be attached to nodes — see `set_tag`.
+
+```bash
+ik create_node_tag --name "theorem" --description "A proven statement"
+```
+
+---
+
 ## `ik set_tag`
 
 Attaches an existing tag to an existing base-network node or edge by appending
@@ -223,13 +236,25 @@ Sequence of operations:
 
 Notes:
 
-- Nothing enforces that an edge tag is applied to an edge, or a node tag to a
-  node. The `create_*_tag` distinction is descriptive, not a constraint.
+- The tag kind must match the target kind: an edge tag can only be applied to
+  an edge, and a node tag only to a node. Otherwise step 5 raises
+  `ValueError: An edge tag should point to an edge representation` or
+  `ValueError: A node tag should point to a node representation`.
+- Because that check runs in step 5, a rejected first-time `set_tag` still
+  leaves the representation event from step 4 in the meta log (consuming one
+  `m{n}` alias). No meta edge is written. This is **intended**: the
+  representation is harmless and is reused by any later `set_tag` on the same
+  target. When it happens, a `WARNING` naming the representation and target
+  UUIDs is logged before the `ValueError` is raised (silence it with
+  `--logging-level ERROR`). No warning is logged if the target already had a
+  representation, since nothing is written in that case.
 - Re-running `set_tag` with the same pair appends another meta edge; the
   projected tag set is a set, so the result is idempotent in effect but not in
   the log.
 - Prints nothing on success.
 
 ```bash
-ik set_tag --tag m1 --id e3
+ik create_node --content "Gödel's incompleteness theorem"   # e1
+ik create_node_tag --name "theorem" --description "A proven statement"   # m1
+ik set_tag --tag m1 --id e1   # m2 = representation of e1, m3 = meta edge
 ```

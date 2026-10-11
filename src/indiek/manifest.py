@@ -1,4 +1,4 @@
-"""   Copyright 2026 Adrian Ernesto Radillo
+"""Copyright 2026 Adrian Ernesto Radillo
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ code or documentation.
 Design principle: the MANIFEST is a human- and machine-readable document that
 describes the *structure* of the archive.  It does NOT duplicate event data.
 """
+
 from __future__ import annotations
 
 import json
@@ -117,11 +118,29 @@ _EVENT_BODY_SCHEMA: Dict[str, Any] = {
                         "resource_type is managed."
                     ),
                 },
-                "uri": {"type": "string | null", "description": "Required external URI when resource_type is uri."},
-                "path": {"type": "string | null", "description": "Required local path when resource_type is local_file."},
-                "file_size": {"type": "integer | null", "minimum": 0, "description": "Verified byte length for local_file."},
-                "file_hash": {"type": "string | null", "pattern": "^sha256:[0-9a-f]{64}$", "description": "SHA-256 fingerprint for local_file."},
-                "last_verified": {"type": "string | null", "format": "ISO-8601 datetime", "description": "Time local_file metadata was last verified."},
+                "uri": {
+                    "type": "string | null",
+                    "description": "Required external URI when resource_type is uri.",
+                },
+                "path": {
+                    "type": "string | null",
+                    "description": "Required local path when resource_type is local_file.",
+                },
+                "file_size": {
+                    "type": "integer | null",
+                    "minimum": 0,
+                    "description": "Verified byte length for local_file.",
+                },
+                "file_hash": {
+                    "type": "string | null",
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "description": "SHA-256 fingerprint for local_file.",
+                },
+                "last_verified": {
+                    "type": "string | null",
+                    "format": "ISO-8601 datetime",
+                    "description": "Time local_file metadata was last verified.",
+                },
             },
             "resource_rules": {
                 "managed": "requires blob_hash and media_type; excludes uri/local-file fields",
@@ -159,7 +178,10 @@ _EVENT_BODY_SCHEMA: Dict[str, Any] = {
             "fields": {
                 "body_type": {"const": "supersede_node"},
                 "event_type": {"const": "supersede_node"},
-                "node_id": {"type": "UUID v7 string", "description": "ID of an existing node to supersede."},
+                "node_id": {
+                    "type": "UUID v7 string",
+                    "description": "ID of an existing node to supersede.",
+                },
                 "title": {"type": "string | null"},
                 "resource_type": {"$ref": "node.resource_type"},
                 "media_type": {"$ref": "node.media_type"},
@@ -176,9 +198,18 @@ _EVENT_BODY_SCHEMA: Dict[str, Any] = {
             "fields": {
                 "body_type": {"const": "supersede_edge"},
                 "event_type": {"const": "supersede_edge"},
-                "edge_id": {"type": "UUID v7 string", "description": "ID of an existing edge to supersede."},
-                "source_node": {"type": "UUID v7 string", "description": "Must equal the existing edge source."},
-                "target_node": {"type": "UUID v7 string", "description": "Must equal the existing edge target."},
+                "edge_id": {
+                    "type": "UUID v7 string",
+                    "description": "ID of an existing edge to supersede.",
+                },
+                "source_node": {
+                    "type": "UUID v7 string",
+                    "description": "Must equal the existing edge source.",
+                },
+                "target_node": {
+                    "type": "UUID v7 string",
+                    "description": "Must equal the existing edge target.",
+                },
                 "title": {"type": "string | null"},
                 "resource_type": {"$ref": "node.resource_type"},
                 "media_type": {"$ref": "node.media_type"},

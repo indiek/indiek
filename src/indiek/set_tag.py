@@ -1,4 +1,4 @@
-"""   Copyright 2026 Adrian Ernesto Radillo
+"""Copyright 2026 Adrian Ernesto Radillo
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+
 import logging
 from uuid import UUID
 
@@ -61,8 +62,10 @@ def run(
     else:
         node_or_edge_repr = MetaEventType.CREATE_NODE_REPRESENTATION
     # create representation of the target if it doesn't exist yet
+    created_representation = False
     if queried_uuid not in archive_idx.underlying_id_to_repr_id_:
         logger.debug("...Creating non-existent representation first")
+        created_representation = True
         edge_target: UUID = create_representation(
             underlying_uuid_str=underlying_target,
             correct_event=node_or_edge_repr,
@@ -80,11 +83,24 @@ def run(
     else:
         edge_target: UUID = archive_idx.underlying_id_to_repr_id_[queried_uuid]
     logger.debug("...Now creating the meta edge")
-    body = create_meta_edge(
-        source_id=meta_source_uuid,
-        target_id=edge_target,
-        archive_idx=archive_idx,
-    )
+    try:
+        body = create_meta_edge(
+            source_id=meta_source_uuid,
+            target_id=edge_target,
+            archive_idx=archive_idx,
+        )
+    except ValueError:
+        # Intended: a representation written above is kept even though no tag
+        # is set, so the user is told it remains in the meta log.
+        if created_representation:
+            logger.warning(
+                "set_tag rejected: representation %s of %s was created but no "
+                "tag was set; the representation remains in the meta log "
+                "(intended, harmless).",
+                edge_target,
+                queried_uuid,
+            )
+        raise
 
     event = create_meta_event(
         body=body, public_key=curr_public_key, archive_idx=archive_idx

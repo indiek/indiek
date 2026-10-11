@@ -1,4 +1,4 @@
-"""   Copyright 2026 Adrian Ernesto Radillo
+"""Copyright 2026 Adrian Ernesto Radillo
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@ limitations under the License.
 ---
 
 Create managed, URI, and local-file nodes in an IndieK archive."""
-
 
 import hashlib
 import mimetypes
@@ -142,13 +141,22 @@ def run(
     if resource_type is ResourceType.URI:
         if not uri:
             raise ValueError("--uri is required when --resource-type uri")
-        return create_uri_node(archive_idx, uri, node_title, media_type, curr_public_key, curr_signing_key)
+        return create_uri_node(
+            archive_idx, uri, node_title, media_type, curr_public_key, curr_signing_key
+        )
     if resource_type is ResourceType.LOCAL_FILE:
         if not path:
             raise ValueError("--path is required when --resource-type local_file")
-        return create_local_file_node(archive_idx, path, node_title, curr_public_key, curr_signing_key)
+        return create_local_file_node(
+            archive_idx, path, node_title, curr_public_key, curr_signing_key
+        )
     if node_content is None or media_type is None:
         raise ValueError("--content is required for managed nodes")
     return create_node_from_content(
-        archive_idx, node_content, media_type, curr_public_key, curr_signing_key, node_title
+        archive_idx,
+        node_content,
+        media_type,
+        curr_public_key,
+        curr_signing_key,
+        node_title,
     )

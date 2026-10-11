@@ -1,4 +1,4 @@
-"""   Copyright 2026 Adrian Ernesto Radillo
+"""Copyright 2026 Adrian Ernesto Radillo
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -65,7 +65,9 @@ def sign_event(body: dict | BaseModel, signing_key: nacl.signing.SigningKey) -> 
 
 
 # 4. Verification Function (Crucial for your Archive)
-def verify_signature(body: dict | BaseModel, signature_hex: str, public_key_hex: str) -> bool:
+def verify_signature(
+    body: dict | BaseModel, signature_hex: str, public_key_hex: str
+) -> bool:
     try:
         # Reconstruct public key
         verify_key = nacl.signing.VerifyKey(
@@ -76,5 +78,5 @@ def verify_signature(body: dict | BaseModel, signature_hex: str, public_key_hex:
         msg_hash = get_canonical_hash(body)
         verify_key.verify(msg_hash, bytes.fromhex(signature_hex))
         return True
-    except (nacl.exceptions.BadSignatureError, ValueError, TypeError):
+    except nacl.exceptions.BadSignatureError, ValueError, TypeError:
         return False

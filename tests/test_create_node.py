@@ -55,7 +55,9 @@ def test_managed_node_from_inline_content(
     assert f"Node created: {body['node_id']}" in capsys.readouterr().out
 
 
-@pytest.mark.skipif(not MARKDOWN_IS_KNOWN, reason="stdlib mimetypes does not map .md here")
+@pytest.mark.skipif(
+    not MARKDOWN_IS_KNOWN, reason="stdlib mimetypes does not map .md here"
+)
 def test_managed_node_from_markdown_file_infers_title_and_media_type(
     run_cli: Callable[..., None],
     base_events: Callable[[], list[dict[str, Any]]],

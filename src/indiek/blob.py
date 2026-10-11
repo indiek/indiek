@@ -1,4 +1,4 @@
-"""   Copyright 2026 Adrian Ernesto Radillo
+"""Copyright 2026 Adrian Ernesto Radillo
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -191,7 +191,9 @@ class Archive:
             raise NotImplementedError()
         return self.blob_store.root_path
 
-    def check_archive_integrity(self, event_log: InfraEventLog) -> tuple[str | None, int]:
+    def check_archive_integrity(
+        self, event_log: InfraEventLog
+    ) -> tuple[str | None, int]:
         # TODO: currently doesn't check public keys against MANIFEST
         # TODO: if unreferenced blobs, at least mention it as a warning...
         # TODO: if dangling meta nodes with lost underlying items, throw an error
@@ -307,19 +309,30 @@ class ArchiveIndex:
                     "tags": set(),
                     "body": body.copy(),
                 }
-            elif event_type in {EventType.SUPERSEDE_NODE.value, EventType.SUPERSEDE_EDGE.value}:
+            elif event_type in {
+                EventType.SUPERSEDE_NODE.value,
+                EventType.SUPERSEDE_EDGE.value,
+            }:
                 is_edge = event_type == EventType.SUPERSEDE_EDGE.value
                 item_id = body["edge_id"] if is_edge else body["node_id"]
                 item_uuid = UUID(item_id)
                 previous = id_info.get(item_uuid)
                 if previous is None:
-                    raise IntegrityError(f"Supersede event references unknown item {item_id}")
+                    raise IntegrityError(
+                        f"Supersede event references unknown item {item_id}"
+                    )
                 if previous["is_edge"] != is_edge:
-                    raise IntegrityError(f"Supersede event type does not match item {item_id}")
+                    raise IntegrityError(
+                        f"Supersede event type does not match item {item_id}"
+                    )
                 if is_edge:
                     for endpoint in ("source_node", "target_node"):
-                        if str(previous["body"].get(endpoint)) != str(body.get(endpoint)):
-                            raise IntegrityError("Supersede edge events cannot change endpoints")
+                        if str(previous["body"].get(endpoint)) != str(
+                            body.get(endpoint)
+                        ):
+                            raise IntegrityError(
+                                "Supersede edge events cannot change endpoints"
+                            )
                 previous["author"] = event["header"]["author"]
                 previous["body"] = body.copy()
 
@@ -346,18 +359,28 @@ class ArchiveIndex:
                     "is_edge": is_edge,
                     "is_edge_tag": event_type == MetaEventType.CREATE_EDGE_TAG.value,
                     "is_node_tag": event_type == MetaEventType.CREATE_NODE_TAG.value,
-                    "is_edge_representation": event_type == MetaEventType.CREATE_EDGE_REPRESENTATION.value,
-                    "is_node_representation": event_type == MetaEventType.CREATE_NODE_REPRESENTATION.value,
+                    "is_edge_representation": event_type
+                    == MetaEventType.CREATE_EDGE_REPRESENTATION.value,
+                    "is_node_representation": event_type
+                    == MetaEventType.CREATE_NODE_REPRESENTATION.value,
                     "author": meta_event["header"]["author"],
                     "body": body.copy(),
                 }
-            if event_type in {MetaEventType.CREATE_EDGE_REPRESENTATION.value, MetaEventType.CREATE_NODE_REPRESENTATION.value}:
+            if event_type in {
+                MetaEventType.CREATE_EDGE_REPRESENTATION.value,
+                MetaEventType.CREATE_NODE_REPRESENTATION.value,
+            }:
                 meta_to_base_id[UUID(body["node_id"])] = UUID(body["underlying_id"])
-            if event_type in {MetaEventType.SET_EDGE_TAG.value, MetaEventType.SET_NODE_TAG.value}:
+            if event_type in {
+                MetaEventType.SET_EDGE_TAG.value,
+                MetaEventType.SET_NODE_TAG.value,
+            }:
                 meta_node_id = UUID(body["target_node"])
                 underlying_uuid = meta_to_base_id.get(meta_node_id)
                 if underlying_uuid is None or underlying_uuid not in id_info:
-                    raise IntegrityError("Tag assignment references an unknown representation")
+                    raise IntegrityError(
+                        "Tag assignment references an unknown representation"
+                    )
                 id_info[underlying_uuid]["tags"].add(UUID(body["source_node"]))
 
         self.human_to_machine_id_ = idmap
@@ -372,8 +395,13 @@ class ArchiveIndex:
         retain the existing human-friendly mapping and update the active body.
         """
         body = event.body.model_dump(mode="json")
-        if isinstance(event, EventModel) and event.body.event_type in {EventType.SUPERSEDE_NODE, EventType.SUPERSEDE_EDGE}:
-            item_id = str(getattr(event.body, "edge_id", getattr(event.body, "node_id", "")))
+        if isinstance(event, EventModel) and event.body.event_type in {
+            EventType.SUPERSEDE_NODE,
+            EventType.SUPERSEDE_EDGE,
+        }:
+            item_id = str(
+                getattr(event.body, "edge_id", getattr(event.body, "node_id", ""))
+            )
             item_uuid = UUID(item_id)
             if item_uuid not in self.id_info_:
                 raise ValueError(f"Cannot supersede unknown item {item_id}")
@@ -382,8 +410,14 @@ class ArchiveIndex:
             return
 
         prefix = "e" if isinstance(event, EventModel) else "m"
-        item_id = str(getattr(event.body, "edge_id", getattr(event.body, "node_id", "")))
-        existing = [int(key[1:]) for key in self.human_to_machine_id_ if key.startswith(prefix) and key[1:].isdigit()]
+        item_id = str(
+            getattr(event.body, "edge_id", getattr(event.body, "node_id", ""))
+        )
+        existing = [
+            int(key[1:])
+            for key in self.human_to_machine_id_
+            if key.startswith(prefix) and key[1:].isdigit()
+        ]
         human_id = f"{prefix}{max(existing, default=0) + 1}"
         self.human_to_machine_id_[human_id] = item_id
         self.machine_to_human_id_[item_id] = human_id

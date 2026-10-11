@@ -1,4 +1,4 @@
-"""   Copyright 2026 Adrian Ernesto Radillo
+"""Copyright 2026 Adrian Ernesto Radillo
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -77,7 +77,9 @@ def create_event(
     prev_hash = archive.last_event_hash_ if archive.nevents_ else None
 
     return EventModel(
-        header=EventHeader(version=EVENT_FORMAT_VERSION, prev_hash=prev_hash, author=public_key),
+        header=EventHeader(
+            version=EVENT_FORMAT_VERSION, prev_hash=prev_hash, author=public_key
+        ),
         body=body,
     )
 
@@ -93,7 +95,9 @@ def create_meta_event(
     )
 
     return MetaEventModel(
-        header=MetaEventHeader(version=EVENT_FORMAT_VERSION, prev_hash=prev_hash, author=public_key),
+        header=MetaEventHeader(
+            version=EVENT_FORMAT_VERSION, prev_hash=prev_hash, author=public_key
+        ),
         body=body,
     )
 
@@ -122,9 +126,17 @@ def create_vertex(
         "last_verified": last_verified,
     }
     if blob_hash is not None:
-        kwargs["blob_hash"] = blob_hash if blob_hash.startswith(blob_hash_prefix) else blob_hash_prefix + blob_hash
+        kwargs["blob_hash"] = (
+            blob_hash
+            if blob_hash.startswith(blob_hash_prefix)
+            else blob_hash_prefix + blob_hash
+        )
     if file_hash is not None:
-        kwargs["file_hash"] = file_hash if file_hash.startswith(blob_hash_prefix) else blob_hash_prefix + file_hash
+        kwargs["file_hash"] = (
+            file_hash
+            if file_hash.startswith(blob_hash_prefix)
+            else blob_hash_prefix + file_hash
+        )
     return Node(**kwargs)
 
 
@@ -149,7 +161,9 @@ def create_meta_vertex(
     """
     if tag is None:
         if underlying_id is None or meta_event_type is None:
-            raise ValueError("A representation requires an underlying ID and event type")
+            raise ValueError(
+                "A representation requires an underlying ID and event type"
+            )
         return MetaRepresentation(
             event_type=meta_event_type, underlying_id=underlying_id
         )
@@ -254,7 +268,9 @@ def sign_unsigned_event(event, signing_key):
     event.signature = sign_event(event.body, signing_key)
 
 
-def _write_event(event: EventModel | MetaEventModel, signing_key, log_root: str, label: str) -> None:
+def _write_event(
+    event: EventModel | MetaEventModel, signing_key, log_root: str, label: str
+) -> None:
     """Sign and append an event to its date-sharded NDJSON log."""
     sign_unsigned_event(event, signing_key)
     ts = event.header.timestamp
@@ -275,4 +291,6 @@ def write_event(event: EventModel, signing_key, arc_idx: ArchiveIndex) -> None:
 
 def write_meta_event(event: MetaEventModel, signing_key, arc_idx: ArchiveIndex) -> None:
     """Sign and persist a meta-network event."""
-    _write_event(event, signing_key, str(arc_idx.arc.meta_event_log.path_event_log), "META EVENT")
+    _write_event(
+        event, signing_key, str(arc_idx.arc.meta_event_log.path_event_log), "META EVENT"
+    )
