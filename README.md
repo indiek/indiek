@@ -1,3 +1,4 @@
+See [indiek.org](https://indiek.org) for broader context and documentation on the IndieK project.
 # `ik` CLI — API Reference
 
 Reference for all twelve `ik` subcommands.
@@ -35,9 +36,9 @@ stderr, so it is interleaved with command output.
 
 ### Environment
 
-| Variable | Meaning |
-| --- | --- |
-| `IK_ARCHIVE_PATH` | Root directory of the archive. |
+| Variable                | Meaning                                                                    |
+| ----------------------- | -------------------------------------------------------------------------- |
+| `IK_ARCHIVE_PATH`       | Root directory of the archive.                                             |
 | `IK_AUTHOR_PRIVATE_KEY` | Current author's Ed25519 private key: a 32-byte seed as 64 hex characters. |
 
 Both are required by **every** command, including `config`, `read`, `export`
@@ -202,7 +203,7 @@ Semantics and limits:
 - The blob for the edge content is written to the blob store *before* the
   endpoints are validated, so a failed `create_edge` can leave an unreferenced
   blob behind. This is harmless — integrity verification ignores unreferenced
-  blobs — but it is not cleaned up.
+  blobs — but it is not cleaned up. 
 - Edges are directed. Endpoints are immutable: `supersede_edge` may replace an
   edge's content but the index rejects any attempt to change `source_node` or
   `target_node`.
