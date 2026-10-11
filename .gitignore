@@ -12,3 +12,4 @@ lib
 sandbox
 tests/__pycache__
 ROADMAP.md
+*__pycache__
