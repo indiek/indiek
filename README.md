@@ -1,7 +1,21 @@
 # `ik` CLI — API Reference
 
-Reference for five commands: `create_node`, `create_edge`, `create_edge_tag`,
-`create_node_tag`, `set_tag`.
+Reference for all twelve `ik` subcommands.
+
+| Command | Purpose | Prints on success |
+| --- | --- | --- |
+| `config` | Show / set `IK_ARCHIVE_PATH` in the dotenv file | log lines (WARNING) |
+| `create_node` | Add a base-network node (`managed`, `uri`, `local_file`) | `Node created: <uuid>` |
+| `create_edge` | Add a directed, content-carrying edge between two nodes | `Edge created: <uuid>` |
+| `supersede_node` | Replace a node's content (append-only) | `Node superseded: <uuid>` |
+| `supersede_edge` | Replace an edge's content (append-only) | `Edge superseded: <uuid>` |
+| `create_node_tag` | Define a tag for nodes | nothing |
+| `create_edge_tag` | Define a tag for edges | `Meta node created: <uuid>` |
+| `set_tag` | Attach a tag to a node or edge | nothing |
+| `read` | Print the base and meta event logs as tables | two tables |
+| `export` | Write the base network as GraphML | nothing |
+| `ingest` | Bulk-create nodes from a folder and edges from a file | nothing |
+| `manifest` | Write `MANIFEST.json` at the archive root | `MANIFEST written to: <path>` |
 
 ## Invocation shape
 
@@ -14,16 +28,44 @@ Global flags apply to every command and must precede the subcommand.
 | Flag | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `--dot-env` | no | `.env` | Dotenv file to load. Loaded with `override=False`, so real environment variables win. |
-| `--logging-level` | no | `WARNING` | Any `logging` level name (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`). |
+| `--logging-level` | no | `WARNING` | An **uppercase** `logging` level name: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Lowercase names (e.g. `debug`) crash with `TypeError`; unknown names with `AttributeError`. |
 
-Every invocation reads `IK_ARCHIVE_PATH` and `IK_AUTHOR_PRIVATE_KEY` from the
-environment, then walks and verifies the whole event log **and** the whole meta
+All log output — including every `WARNING` — is written to **stdout**, not
+stderr, so it is interleaved with command output.
+
+### Environment
+
+| Variable | Meaning |
+| --- | --- |
+| `IK_ARCHIVE_PATH` | Root directory of the archive. |
+| `IK_AUTHOR_PRIVATE_KEY` | Current author's Ed25519 private key: a 32-byte seed as 64 hex characters. |
+
+Both are required by **every** command, including `config`, `read`, `export`
+and `manifest`. A non-hex key raises a `ValueError` from `bytes.fromhex`; a key
+of the wrong length raises
+`ValueError: Invalid key length. Ed25519 private key must be 32 bytes.`
+There is no key-generation command; one way to make a seed:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### Integrity verification
+
+Every invocation walks and verifies the whole event log **and** the whole meta
 event log before dispatching the command. There is no way to skip verification.
 Verification raises `IntegrityError` with one of three messages:
 
 - `Chain broken!` — a `header.prev_hash` does not match the canonical hash of the preceding event.
 - `Data tampered or bad author!` — the Ed25519 signature does not verify against `header.author`.
 - `File corrupted or missing!` — an event's `blob_hash` is absent from the blob store or its bytes hash to something else.
+
+Building the index then raises `IntegrityError` if the logs are inconsistent:
+
+- `Supersede event references unknown item <id>`
+- `Supersede event type does not match item <id>`
+- `Supersede edge events cannot change endpoints`
+- `Tag assignment references an unknown representation`
 
 At `WARNING` level (the default) a successful verification prints
 `ARCHIVE INTEGRITY VERIFIED` to stdout.
@@ -64,6 +106,13 @@ Appends a `create_node` event to the base event log.
 
 Prints `Node created: <uuid>` on success.
 
+`--media-type` is validated by argparse `choices`: any other value exits with
+status 2 before the archive is touched.
+
+If `--title` is omitted and `--content` names an existing file, the title
+defaults to that file's stem — for **every** resource type, even `uri` and
+`local_file` nodes where `--content` is otherwise ignored.
+
 ### `--resource-type managed` (default)
 
 The content is copied into the archive's content-addressed blob store and the
@@ -85,9 +134,7 @@ event records only `blob_hash` + `media_type`.
 overwritten by the detection step above. Omitting `--content` is an argparse
 error: `create_node --content is required for managed nodes`.
 
-If `--title` is omitted and `--content` names an existing file, the title
-defaults to the file's stem (filename without extension). Otherwise the title
-is `null`.
+Otherwise (no `--title`, `--content` is inline text) the title is `null`.
 
 ```bash
 ik create_node --content "Gödel's incompleteness theorem"
@@ -167,6 +214,59 @@ ik create_edge --content "generalises" --source-node e1 --target-node e2
 
 ---
 
+## `ik supersede_node`
+
+Appends a `supersede_node` event that replaces a node's content. History is
+kept: the original event stays in the log.
+
+| Flag | Required | Meaning |
+| --- | --- | --- |
+| `--node-id` | yes | Node to supersede (UUID or `e{n}` alias). |
+| `--content` | yes | Replacement content, stored as literal text. |
+| `--title` | no | New title. When omitted, the node's latest title is kept. |
+
+Semantics:
+
+- The replacement is always a **managed** blob with media type
+  `text/markdown; charset=utf-8`, whatever the node's original resource type.
+- The node keeps its UUID and its `e{n}` alias.
+- Errors: `ValueError: Node '<id>' does not exist in this archive` and
+  `ValueError: ID '<id>' does not reference a base-network node`.
+- There is **no authorship check**: any key may supersede any node. The index
+  then records the superseding key as the node's author.
+- Prints `Node superseded: <uuid>`.
+
+```bash
+ik supersede_node --node-id e1 --content "Gödel's *first* incompleteness theorem"
+```
+
+---
+
+## `ik supersede_edge`
+
+Appends a `supersede_edge` event that replaces an edge's content.
+
+| Flag | Required | Meaning |
+| --- | --- | --- |
+| `--edge-id` | yes | Edge to supersede (UUID or `e{n}` alias). |
+| `--content` | yes | Replacement text. |
+
+Semantics:
+
+- The replacement is always stored as `text/plain; charset=utf-8`.
+- `source_node`, `target_node` and `title` are copied from the current edge;
+  endpoints can never change.
+- Errors: `ValueError: Edge '<id>' does not exist in this archive` and
+  `ValueError: ID '<id>' does not reference a base-network edge`.
+- No authorship check, as for `supersede_node`.
+- Prints `Edge superseded: <uuid>`.
+
+```bash
+ik supersede_edge --edge-id e3 --content "strictly generalises"
+```
+
+---
+
 ## `ik create_edge_tag`
 
 Appends a `create_edge_tag` event to the **meta** event log, defining a tag
@@ -196,9 +296,10 @@ ik create_edge_tag --name "conjecture" --description "Unproven claimed relation"
 
 ## `ik create_node_tag`
 
-Identical to `create_edge_tag` (same flags, same notes), except that it appends
-a `create_node_tag` event, defining a tag intended for **nodes**. Only node tags
-can be attached to nodes — see `set_tag`.
+Same flags and notes as `create_edge_tag`, except that it appends a
+`create_node_tag` event, defining a tag intended for **nodes**, and it **prints
+nothing** on success (use `ik read` to find the new `m{n}` alias). Only node
+tags can be attached to nodes — see `set_tag`.
 
 ```bash
 ik create_node_tag --name "theorem" --description "A proven statement"
@@ -257,4 +358,172 @@ Notes:
 ik create_node --content "Gödel's incompleteness theorem"   # e1
 ik create_node_tag --name "theorem" --description "A proven statement"   # m1
 ik set_tag --tag m1 --id e1   # m2 = representation of e1, m3 = meta edge
+```
+
+---
+
+## `ik read`
+
+Prints the archive as two `rich` tables on stdout: **Events Log** (base
+network) and **Meta Events Log**. Every row ends with a *Human-Friendly ID*
+column (`e{n}` / `m{n}`).
+
+| Flag | Required | Meaning |
+| --- | --- | --- |
+| `--mini` | no | Compact view: only Timestamp, Event Type, Author (+ Tag Name in the meta table). |
+
+Without `--mini` the base table adds Node ID, Edge ID, Source Node, Target
+Node, Resource Type and Title; the meta table adds Meta Node ID, Meta Edge ID,
+Tag Description, Meta Source/Target Node and Underlying ID. Missing values are
+shown as `-`.
+
+```bash
+ik read --mini
+```
+
+---
+
+## `ik export`
+
+Writes the base network as a pretty-printed, directed GraphML file.
+
+| Flag | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `--output-path` | yes | — | Destination `.graphml` file (overwritten). |
+| `--tags` | no | none | Comma-separated tag IDs (UUIDs or `m{n}` aliases). |
+
+Semantics and limits:
+
+- Only `create_node` and `create_edge` events become `<node>` / `<edge>`
+  elements. **Supersede events are ignored**, so the export shows original
+  content.
+- Each element carries `author`, `timestamp`, `blob_hash`, and a `label` —
+  the label is only filled for `text/plain` content.
+- `--tags` keeps an item if it carries **any** of the listed tags (OR). Nodes
+  and edges are filtered independently, so an exported edge may point at a node
+  that was filtered out.
+- An unknown alias in `--tags` raises `KeyError`.
+- Prints nothing on success.
+
+```bash
+ik export --output-path graph.graphml --tags m1,m4
+```
+
+---
+
+## `ik ingest`
+
+Bulk-creates managed nodes from a folder, then edges from a definition file.
+Both flags are optional; with neither, nothing happens.
+
+| Flag | Required | Meaning |
+| --- | --- | --- |
+| `--input-folder` | no | Every entry of this folder (sorted, **not** recursive) becomes a node. |
+| `--edges-def-file` | no | One edge per line: `source,target,content`. |
+
+Semantics and limits:
+
+- Each entry goes through the same detection as `create_node --content`; the
+  node title is the file stem.
+- Hidden and unsupported files (e.g. `.DS_Store`) raise
+  `Unsupported archival media type` and abort the run; nodes already created
+  stay in the archive.
+- A **subdirectory** is not a file, so its path string is stored as a
+  `text/plain` node.
+- Edge lines split on the first two commas; the content may contain further
+  commas. Source and target accept UUIDs or `e{n}` aliases. The line's trailing
+  newline is **kept** in the edge content. A line with fewer than two commas
+  crashes.
+- Prints nothing on success.
+
+```bash
+printf 'e1,e2,generalises\n' > edges.csv
+ik ingest --input-folder ./notes --edges-def-file edges.csv
+```
+
+---
+
+## `ik manifest`
+
+Writes (overwrites) `MANIFEST.json` at the archive root: format name and
+version, the current author's public key, the blob-store and event-log layout,
+and JSON schemas of the event models. No flags. Prints
+`MANIFEST written to: <path>`.
+
+Known wording bug: the manifest describes the canonical serialisation as
+"compact JSON"; the implementation actually uses `json.dumps(..., sort_keys=True)`
+with Python's default `", "` / `": "` separators.
+
+```bash
+ik manifest
+```
+
+---
+
+## `ik config`
+
+Shows, and optionally sets, `IK_ARCHIVE_PATH` in the dotenv file given by
+`--dot-env`.
+
+| Flag | Required | Meaning |
+| --- | --- | --- |
+| `--set-archive-path` | no | New archive path to write into the dotenv file. |
+
+- Logs `Original IK_ARCHIVE_PATH=<value>` and, when setting,
+  `New IK_ARCHIVE_PATH=<path>` — both at `WARNING`, hence on stdout.
+- The value is written with `dotenv.set_key`, which wraps it in single quotes.
+- Only `IK_ARCHIVE_PATH` can be set; the key must be managed by hand.
+- Like every command, it needs a valid key and archive path **before** it runs:
+  with `IK_ARCHIVE_PATH` unset it crashes with `TypeError`, so it cannot
+  bootstrap a fresh setup — write the dotenv by hand first.
+
+```bash
+ik --dot-env .env config --set-archive-path ~/archives/mykg
+```
+
+---
+
+## Example: build a knowledge graph from scratch
+
+One session exercising every command. Comments show the alias each step
+allocates in a fresh archive.
+
+```bash
+# 1. Setup — the key and archive path must exist before any ik command runs
+mkdir -p ~/archives/demo && cd ~/kg-demo   # a folder holding the sample files below
+printf "IK_AUTHOR_PRIVATE_KEY=%s\nIK_ARCHIVE_PATH=%s\n" \
+  "$(python -c 'import secrets; print(secrets.token_hex(32))')" ~/archives/demo > .env
+ik config --set-archive-path ~/archives/demo
+
+# 2. Managed nodes: inline text, text/plain, text/markdown, image/png
+ik create_node --content "Gödel's incompleteness theorem"            # e1
+ik create_node --content ./notes/statement.txt                      # e2 (title "statement")
+ik create_node --content ./notes/proof-sketch.md --title "Proof"    # e3
+ik create_node --content ./figures/diagram.png                      # e4
+
+# 3. Reference nodes: uri and local_file
+ik create_node --resource-type uri --uri https://arxiv.org/abs/1234.5678 \
+  --title "Survey" --media-type "application/pdf; profile=pdfa"     # e5
+ik create_node --resource-type local_file --path ~/scans/page.tiff  # e6
+
+# 4. Edges, then append-only revisions
+ik create_edge --source-node e2 --target-node e1 --content "states"  # e7
+ik create_edge --source-node e3 --target-node e2 --content "proves"  # e8
+ik supersede_node --node-id e1 --content "Gödel's *first* incompleteness theorem"
+ik supersede_edge --edge-id e8 --content "sketches a proof of"
+
+# 5. Tags
+ik create_node_tag --name theorem --description "A proven statement"  # m1
+ik create_edge_tag --name proof --description "Proof relation"        # m2
+ik set_tag --tag m1 --id e1   # m3 = representation of e1, m4 = meta edge
+ik set_tag --tag m2 --id e8   # m5 = representation of e8, m6 = meta edge
+
+# 6. Bulk import: one .txt in ./more becomes e9; the edge line becomes e10
+printf 'e9,e1,cites\n' > edges.csv
+ik ingest --input-folder ./more --edges-def-file edges.csv
+
+# 7. Inspect, export, document
+ik read --mini
+ik export --output-path theorems.graphml --tags m1,m2
+ik manifest
 ```
