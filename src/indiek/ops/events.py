@@ -37,7 +37,7 @@ from indiek.core.models import (
     SupersedeNode,
     Tag,
 )
-from indiek.core.signing import sign_body
+from indiek.core.signing import sign_event
 
 BaseBody = Node | Edge | SupersedeNode | SupersedeEdge
 MetaBody = Tag | MetaRepresentation | MetaEdge
@@ -54,7 +54,7 @@ def append_base(index: ArchiveIndex, author: Author, body: BaseBody) -> EventMod
         ),
         body=body,
     )
-    event.signature = sign_body(event.body, author)
+    event.signature = sign_event(event, author)
     store.base_log.append(event)
     return event
 
@@ -70,12 +70,14 @@ def append_meta(index: ArchiveIndex, author: Author, body: MetaBody) -> MetaEven
         ),
         body=body,
     )
-    event.signature = sign_body(event.body, author)
+    event.signature = sign_event(event, author)
     store.meta_log.append(event)
     return event
 
 
-def require_base_item(index: ArchiveIndex, ref: str | UUID, *, edge: bool) -> IndexedItem:
+def require_base_item(
+    index: ArchiveIndex, ref: str | UUID, *, edge: bool
+) -> IndexedItem:
     """Look up a base-network node (``edge=False``) or edge (``edge=True``).
 
     Raises:
@@ -86,7 +88,11 @@ def require_base_item(index: ArchiveIndex, ref: str | UUID, *, edge: bool) -> In
     try:
         item = index.get(ref)
     except UnknownItemError:
-        raise UnknownItemError(f"{label} {ref!r} does not exist in this archive") from None
+        raise UnknownItemError(
+            f"{label} {ref!r} does not exist in this archive"
+        ) from None
     if item.is_meta or item.is_edge != edge:
-        raise UnknownItemError(f"ID {ref!r} does not reference a base-network {label.lower()}")
+        raise UnknownItemError(
+            f"ID {ref!r} does not reference a base-network {label.lower()}"
+        )
     return item

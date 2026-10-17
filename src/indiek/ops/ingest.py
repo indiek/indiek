@@ -66,7 +66,9 @@ def ingest(
     result = IngestResult()
     for file_path in file_paths:
         content, media_type = extract_content_and_mime(str(file_path))
-        node_id = create_managed_node(index, author, content, media_type, Path(file_path).stem)
+        node_id = create_managed_node(
+            index, author, content, media_type, Path(file_path).stem
+        )
         result.node_ids.append(node_id)
         index = ArchiveIndex(index.store.reopen())
     for line in edge_definitions:

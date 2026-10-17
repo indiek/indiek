@@ -60,7 +60,9 @@ def create_tag(
     return body.node_id
 
 
-def _create_representation(index: ArchiveIndex, author: Author, target: IndexedItem) -> UUID:
+def _create_representation(
+    index: ArchiveIndex, author: Author, target: IndexedItem
+) -> UUID:
     event_type = (
         MetaEventType.CREATE_EDGE_REPRESENTATION
         if target.is_edge
@@ -95,7 +97,9 @@ def set_tag(
 
     target = index.items.get(index.resolve(target_ref))
     if target is None:
-        raise UnknownItemError("UUID is not part of any network (neither base nor meta)")
+        raise UnknownItemError(
+            "UUID is not part of any network (neither base nor meta)"
+        )
     if target.is_meta:
         raise ArchiveRuleError("UUID should not be an item from the meta network")
 
@@ -122,6 +126,8 @@ def set_tag(
             )
         raise ArchiveRuleError(mismatch)
 
-    body = MetaEdge(event_type=event_type, source_node=tag.id, target_node=representation)
+    body = MetaEdge(
+        event_type=event_type, source_node=tag.id, target_node=representation
+    )
     append_meta(index, author, body)
     return body.edge_id

@@ -62,7 +62,11 @@ _KIND_OF_EVENT: dict[str, ItemKind] = {
     MetaEventType.SET_EDGE_TAG.value: ItemKind.EDGE_TAG_ASSIGNMENT,
 }
 
-_EDGE_KINDS = {ItemKind.EDGE, ItemKind.NODE_TAG_ASSIGNMENT, ItemKind.EDGE_TAG_ASSIGNMENT}
+_EDGE_KINDS = {
+    ItemKind.EDGE,
+    ItemKind.NODE_TAG_ASSIGNMENT,
+    ItemKind.EDGE_TAG_ASSIGNMENT,
+}
 _TAG_KINDS = {ItemKind.NODE_TAG, ItemKind.EDGE_TAG}
 _REPRESENTATION_KINDS = {ItemKind.NODE_REPRESENTATION, ItemKind.EDGE_REPRESENTATION}
 _ASSIGNMENT_KINDS = {ItemKind.NODE_TAG_ASSIGNMENT, ItemKind.EDGE_TAG_ASSIGNMENT}
@@ -169,14 +173,19 @@ class ArchiveIndex:
                 count += 1
                 kind = _KIND_OF_EVENT[event_type]
                 item_id = UUID(body["edge_id" if kind is ItemKind.EDGE else "node_id"])
-                self._add(f"e{count}", IndexedItem(item_id, f"e{count}", kind, author, dict(body)))
+                self._add(
+                    f"e{count}",
+                    IndexedItem(item_id, f"e{count}", kind, author, dict(body)),
+                )
             elif event_type in {
                 EventType.SUPERSEDE_NODE.value,
                 EventType.SUPERSEDE_EDGE.value,
             }:
                 self._apply_supersede(event_type, body, author)
 
-    def _apply_supersede(self, event_type: str, body: dict[str, Any], author: str) -> None:
+    def _apply_supersede(
+        self, event_type: str, body: dict[str, Any], author: str
+    ) -> None:
         is_edge = event_type == EventType.SUPERSEDE_EDGE.value
         raw_id = body["edge_id" if is_edge else "node_id"]
         previous = self.items.get(UUID(raw_id))
@@ -187,7 +196,9 @@ class ArchiveIndex:
         if is_edge:
             for endpoint in ("source_node", "target_node"):
                 if str(previous.body.get(endpoint)) != str(body.get(endpoint)):
-                    raise IntegrityError("Supersede edge events cannot change endpoints")
+                    raise IntegrityError(
+                        "Supersede edge events cannot change endpoints"
+                    )
         previous.author = author
         previous.body = dict(body)
 
@@ -201,7 +212,9 @@ class ArchiveIndex:
             count += 1
             item_id = UUID(body["edge_id"] if "edge_id" in body else body["node_id"])
             author = event["header"]["author"]
-            self._add(f"m{count}", IndexedItem(item_id, f"m{count}", kind, author, dict(body)))
+            self._add(
+                f"m{count}", IndexedItem(item_id, f"m{count}", kind, author, dict(body))
+            )
             if kind in _REPRESENTATION_KINDS:
                 underlying = UUID(body["underlying_id"])
                 self._underlying_of[item_id] = underlying

@@ -1,0 +1,161 @@
+{
+  "format_version": "3.0",
+  "description": "Test vectors of the IndieK archive format: an independent implementation must reproduce every hex value from event_unsigned and seed_hex.",
+  "rules": {
+    "canonical_bytes": "json.dumps(obj, sort_keys=True, separators=(\",\", \":\"), ensure_ascii=False) encoded as UTF-8",
+    "signature": "Ed25519 (RFC 8032) over canonical_bytes(event without its 'signature' field), no pre-hash; stored as lowercase hex",
+    "event_hash": "lowercase hex SHA-256 of canonical_bytes(whole event, 'signature' included); it is the next event's header.prev_hash",
+    "strict_parsing": "a log line with duplicate keys, floats, NaN or Infinity is invalid"
+  },
+  "vectors": [
+    {
+      "name": "base genesis create_node, non-ASCII content and title",
+      "seed_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+      "public_key_hex": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+      "event_unsigned": {
+        "header": {
+          "version": "3.0",
+          "prev_hash": null,
+          "timestamp": "2026-10-17T12:00:00Z",
+          "author": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+        },
+        "body": {
+          "event_type": "create_node",
+          "resource_type": "managed",
+          "media_type": "text/plain; charset=utf-8",
+          "blob_hash": "sha256:71a0b54b349d9f8a95d6bb621386c3cb939b0a711dbf4e746e3031c38b4104f5",
+          "uri": null,
+          "path": null,
+          "file_size": null,
+          "file_hash": null,
+          "last_verified": null,
+          "title": "Gödel — incompleteness",
+          "body_type": "node",
+          "node_id": "019a0000-0000-7000-8000-000000000001"
+        }
+      },
+      "signing_bytes_hex": "7b22626f6479223a7b22626c6f625f68617368223a227368613235363a37316130623534623334396439663861393564366262363231333836633363623933396230613731316462663465373436653330333163333862343130346635222c22626f64795f74797065223a226e6f6465222c226576656e745f74797065223a226372656174655f6e6f6465222c2266696c655f68617368223a6e756c6c2c2266696c655f73697a65223a6e756c6c2c226c6173745f7665726966696564223a6e756c6c2c226d656469615f74797065223a22746578742f706c61696e3b20636861727365743d7574662d38222c226e6f64655f6964223a2230313961303030302d303030302d373030302d383030302d303030303030303030303031222c2270617468223a6e756c6c2c227265736f757263655f74797065223a226d616e61676564222c227469746c65223a2247c3b664656c20e2809420696e636f6d706c6574656e657373222c22757269223a6e756c6c7d2c22686561646572223a7b22617574686f72223a2238613838653364643734303966313935666435326462326433636261356437326361363730396266316439343132316266333734383830316234306636663563222c22707265765f68617368223a6e756c6c2c2274696d657374616d70223a22323032362d31302d31375431323a30303a30305a222c2276657273696f6e223a22332e30227d7d",
+      "signature_hex": "e010b410fbfb8893af4df50378574c9f90cfcfedcb5857a58bb351d519c689bb4e2ef35e32a431e8802d5c73f8fb47ccd54df88a62780340523a9d2b5ec2950c",
+      "event": {
+        "header": {
+          "version": "3.0",
+          "prev_hash": null,
+          "timestamp": "2026-10-17T12:00:00Z",
+          "author": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+        },
+        "body": {
+          "event_type": "create_node",
+          "resource_type": "managed",
+          "media_type": "text/plain; charset=utf-8",
+          "blob_hash": "sha256:71a0b54b349d9f8a95d6bb621386c3cb939b0a711dbf4e746e3031c38b4104f5",
+          "uri": null,
+          "path": null,
+          "file_size": null,
+          "file_hash": null,
+          "last_verified": null,
+          "title": "Gödel — incompleteness",
+          "body_type": "node",
+          "node_id": "019a0000-0000-7000-8000-000000000001"
+        },
+        "signature": "e010b410fbfb8893af4df50378574c9f90cfcfedcb5857a58bb351d519c689bb4e2ef35e32a431e8802d5c73f8fb47ccd54df88a62780340523a9d2b5ec2950c"
+      },
+      "event_hash_hex": "a9929a099fc6bedc5ef75d3b634f1ba3def629e6781fa788bfa3bf2601b1a4de"
+    },
+    {
+      "name": "base create_edge chained onto the genesis event",
+      "seed_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+      "public_key_hex": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+      "event_unsigned": {
+        "header": {
+          "version": "3.0",
+          "prev_hash": "a9929a099fc6bedc5ef75d3b634f1ba3def629e6781fa788bfa3bf2601b1a4de",
+          "timestamp": "2026-10-17T12:00:00Z",
+          "author": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+        },
+        "body": {
+          "event_type": "create_edge",
+          "resource_type": "managed",
+          "media_type": "text/plain; charset=utf-8",
+          "blob_hash": "sha256:371c7a20c48187bfcdc0796d5e53cabeb68d743a74389090e2174e2ae49dc531",
+          "uri": null,
+          "path": null,
+          "file_size": null,
+          "file_hash": null,
+          "last_verified": null,
+          "title": null,
+          "body_type": "edge",
+          "edge_id": "019a0000-0000-7000-8000-000000000002",
+          "source_node": "019a0000-0000-7000-8000-000000000001",
+          "target_node": "019a0000-0000-7000-8000-000000000001"
+        }
+      },
+      "signing_bytes_hex": "7b22626f6479223a7b22626c6f625f68617368223a227368613235363a33373163376132306334383138376266636463303739366435653533636162656236386437343361373433383930393065323137346532616534396463353331222c22626f64795f74797065223a2265646765222c22656467655f6964223a2230313961303030302d303030302d373030302d383030302d303030303030303030303032222c226576656e745f74797065223a226372656174655f65646765222c2266696c655f68617368223a6e756c6c2c2266696c655f73697a65223a6e756c6c2c226c6173745f7665726966696564223a6e756c6c2c226d656469615f74797065223a22746578742f706c61696e3b20636861727365743d7574662d38222c2270617468223a6e756c6c2c227265736f757263655f74797065223a226d616e61676564222c22736f757263655f6e6f6465223a2230313961303030302d303030302d373030302d383030302d303030303030303030303031222c227461726765745f6e6f6465223a2230313961303030302d303030302d373030302d383030302d303030303030303030303031222c227469746c65223a6e756c6c2c22757269223a6e756c6c7d2c22686561646572223a7b22617574686f72223a2238613838653364643734303966313935666435326462326433636261356437326361363730396266316439343132316266333734383830316234306636663563222c22707265765f68617368223a2261393932396130393966633662656463356566373564336236333466316261336465663632396536373831666137383862666133626632363031623161346465222c2274696d657374616d70223a22323032362d31302d31375431323a30303a30305a222c2276657273696f6e223a22332e30227d7d",
+      "signature_hex": "7d3c29ae7fd26cd646c8af522b2ed5110c21d54aaa78050db1ca38b14554ebe1700a36d55e427d4390d0a0be0e501fccd4d5f246148d8bc99e78cb85d09dfe03",
+      "event": {
+        "header": {
+          "version": "3.0",
+          "prev_hash": "a9929a099fc6bedc5ef75d3b634f1ba3def629e6781fa788bfa3bf2601b1a4de",
+          "timestamp": "2026-10-17T12:00:00Z",
+          "author": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+        },
+        "body": {
+          "event_type": "create_edge",
+          "resource_type": "managed",
+          "media_type": "text/plain; charset=utf-8",
+          "blob_hash": "sha256:371c7a20c48187bfcdc0796d5e53cabeb68d743a74389090e2174e2ae49dc531",
+          "uri": null,
+          "path": null,
+          "file_size": null,
+          "file_hash": null,
+          "last_verified": null,
+          "title": null,
+          "body_type": "edge",
+          "edge_id": "019a0000-0000-7000-8000-000000000002",
+          "source_node": "019a0000-0000-7000-8000-000000000001",
+          "target_node": "019a0000-0000-7000-8000-000000000001"
+        },
+        "signature": "7d3c29ae7fd26cd646c8af522b2ed5110c21d54aaa78050db1ca38b14554ebe1700a36d55e427d4390d0a0be0e501fccd4d5f246148d8bc99e78cb85d09dfe03"
+      },
+      "event_hash_hex": "92b5e8214af99fae7e862397a1d448c65aac029536075e3c553426cc697f516f"
+    },
+    {
+      "name": "meta genesis create_node_tag by a second author",
+      "seed_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+      "public_key_hex": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
+      "event_unsigned": {
+        "header": {
+          "version": "3.0",
+          "prev_hash": null,
+          "timestamp": "2026-10-17T12:00:00Z",
+          "author": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+        },
+        "body": {
+          "event_type": "create_node_tag",
+          "node_id": "019a0000-0000-7000-8000-000000000003",
+          "body_type": "tag",
+          "name": "théorème",
+          "description": "A proven statement"
+        }
+      },
+      "signing_bytes_hex": "7b22626f6479223a7b22626f64795f74797065223a22746167222c226465736372697074696f6e223a22412070726f76656e2073746174656d656e74222c226576656e745f74797065223a226372656174655f6e6f64655f746167222c226e616d65223a227468c3a96f72c3a86d65222c226e6f64655f6964223a2230313961303030302d303030302d373030302d383030302d303030303030303030303033227d2c22686561646572223a7b22617574686f72223a2238313339373730656138376431373566353661333534363663333463376563636362386438613931623465653337613235646636306635623866633962333934222c22707265765f68617368223a6e756c6c2c2274696d657374616d70223a22323032362d31302d31375431323a30303a30305a222c2276657273696f6e223a22332e30227d7d",
+      "signature_hex": "5e80411d5ec37cb2e797d9fab84dfd68b275ce020c5b15b5754b353191239aae5f0d84e428160a7dc110677f711d53573753cd4118ddf7f39d5dba284117890f",
+      "event": {
+        "header": {
+          "version": "3.0",
+          "prev_hash": null,
+          "timestamp": "2026-10-17T12:00:00Z",
+          "author": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+        },
+        "body": {
+          "event_type": "create_node_tag",
+          "node_id": "019a0000-0000-7000-8000-000000000003",
+          "body_type": "tag",
+          "name": "théorème",
+          "description": "A proven statement"
+        },
+        "signature": "5e80411d5ec37cb2e797d9fab84dfd68b275ce020c5b15b5754b353191239aae5f0d84e428160a7dc110677f711d53573753cd4118ddf7f39d5dba284117890f"
+      },
+      "event_hash_hex": "de88c10a0f9514d9e2b3f301cdf98851200aab348c3f8e9e78bcaea5346da5b2"
+    }
+  ]
+}

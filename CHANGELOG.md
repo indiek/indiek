@@ -4,6 +4,27 @@ All notable changes to the `indiek` package are documented here.
 
 ## Unreleased
 
+## 0.12.0 - 2026-10-17
+
+### Breaking
+- (FORMAT3-CANONICAL) Archive format **3.0** is the only format read or written. Events whose `header.version` is not `"3.0"` raise `IntegrityError("Unsupported format version …")`, so 1.0/2.0 archives no longer open. Owner decision: no backward compatibility (and no migration tool) before the first public release; compatibility is guaranteed from that release on.
+
+### Changed
+- (FORMAT3-CANONICAL) Canonical bytes are now compact: `json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)` encoded as UTF-8 (was default separators with `\uXXXX` escapes).
+- (FORMAT3-CANONICAL) Signatures cover the **whole event** minus its `signature` field (`{header, body}`), Ed25519 over the canonical bytes with no SHA-256 pre-hash (was: the SHA-256 digest of the body only). This closes a replay attack where an author's old signed body could be re-appended under a forged header (new `prev_hash`/timestamp) and still verify in their name.
+- (FORMAT3-CANONICAL) Event hash (`prev_hash` of the next event, archive head) = SHA-256 hex of the canonical bytes of the whole event, signature included.
+- (FORMAT3-CANONICAL) Log lines are parsed strictly: duplicate keys, floats, `NaN`/`Infinity`, malformed JSON or a non-object line raise `IntegrityError`.
+- (FORMAT3-CANONICAL) Only the first event of a log may, and must, have `prev_hash: null`; a log whose first events were deleted now fails with `Chain broken!` (it used to verify).
+- (FORMAT3-CANONICAL) `MANIFEST.json` wording states the exact 3.0 rules (the old "compact JSON" text was wrong for 2.0) and adds `event_log.canonical_bytes`, `event_log.strict_parsing` and `signature_algorithm.specification` (RFC 8032).
+- (FORMAT3-CANONICAL) `tests/cli/test_golden_archive.py` head constants re-recorded for 3.0 (blob set unchanged).
+
+### Added
+- (FORMAT3-CANONICAL) `src/indiek/spec/test_vectors.json`: three deterministic vectors (event, signing bytes, signature, event hash, fixed public test seeds) plus the rules in prose; regenerate with `uv run python scripts/make_test_vectors.py`.
+- (FORMAT3-CANONICAL) `indiek.core.canonical.event_hash`, `parse_line`, `json_ready`; `indiek.core.signing.signing_bytes`, `sign_event`, `verify_event`. Tests: `tests/sdk/test_canonical_signing.py` rewritten (28 tests, incl. the replay scenario and prefix truncation). Suite: 208 passed.
+
+### Removed
+- (FORMAT3-CANONICAL) `indiek.core.canonical.canonical_hash`, `indiek.core.signing.sign_body` / `verify_body` (replaced by `event_hash`, `sign_event`, `verify_event`).
+
 ## 0.11.0 - 2026-10-16 
 
 ### Added

@@ -92,7 +92,9 @@ def create_uri_node(
     media_type: MediaType | None = None,
 ) -> UUID:
     """Append a node referencing, but never fetching, an external URI."""
-    body = Node(title=title, resource_type=ResourceType.URI, media_type=media_type, uri=uri)
+    body = Node(
+        title=title, resource_type=ResourceType.URI, media_type=media_type, uri=uri
+    )
     append_base(index, author, body)
     return body.node_id
 

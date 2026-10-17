@@ -42,7 +42,9 @@ class Author:
         """Load an author from a 32-byte seed encoded as 64 hex characters."""
         seed = bytes.fromhex(seed_hex)
         if len(seed) != SEED_BYTES:
-            raise ValueError("Invalid key length. Ed25519 private key must be 32 bytes.")
+            raise ValueError(
+                "Invalid key length. Ed25519 private key must be 32 bytes."
+            )
         return cls(nacl.signing.SigningKey(seed))
 
     @classmethod
@@ -53,7 +55,9 @@ class Author:
     @property
     def public_key_hex(self) -> str:
         """Lowercase hex Ed25519 public key."""
-        return self.signing_key.verify_key.encode(nacl.encoding.HexEncoder).decode("ascii")
+        return self.signing_key.verify_key.encode(nacl.encoding.HexEncoder).decode(
+            "ascii"
+        )
 
     @property
     def seed_hex(self) -> str:

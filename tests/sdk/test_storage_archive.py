@@ -14,7 +14,7 @@ from indiek.core.archive import ArchiveStore, ChainState, verify_chain
 from indiek.core.author import Author
 from indiek.core.errors import IntegrityError
 from indiek.core.models import EventHeader, EventModel, MediaType, Node
-from indiek.core.signing import sign_body
+from indiek.core.signing import sign_event
 from indiek.core.storage import BlobStore, EventLog
 
 AUTHOR = Author.from_seed_hex("33" * 32)  # public test vector, not a secret
@@ -23,7 +23,8 @@ DAY2 = datetime(2026, 1, 2, tzinfo=UTC)
 
 
 def _canonical_hex(event: dict[str, Any]) -> str:
-    return hashlib.sha256(json.dumps(event, sort_keys=True).encode("utf-8")).hexdigest()
+    raw = json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _append_node(
@@ -40,7 +41,7 @@ def _append_node(
         ),
         body=Node(blob_hash=digest, media_type=MediaType.TEXT_PLAIN, title=None),
     )
-    event.signature = sign_body(event.body, AUTHOR)
+    event.signature = sign_event(event, AUTHOR)
     log.append(event)
     return json.loads(event.model_dump_json())
 

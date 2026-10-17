@@ -30,9 +30,10 @@ from uuid import UUID, uuid7
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-# Version 2 adds resource references and append-only supersede events.  Readers
-# must treat a missing resource_type in a version 1 event as ``managed``.
-EVENT_FORMAT_VERSION: str = "2.0"
+# Version 3.0 is the only format readers accept (no backward compatibility
+# before the first public release): whole-event signatures, compact canonical
+# JSON.  See :mod:`indiek.core.canonical` and :mod:`indiek.core.signing`.
+EVENT_FORMAT_VERSION: str = "3.0"
 
 Sha256HexStr = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 PublicKeyHexStr = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]

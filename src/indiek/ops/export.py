@@ -63,7 +63,9 @@ def build_graphml_tree(
             id=k_id,
             **{"for": k_for, "attr.name": k_name, "attr.type": k_type},
         )
-    graph = ET.SubElement(root, "graph", id="ik_knowledge_graph", edgedefault="directed")
+    graph = ET.SubElement(
+        root, "graph", id="ik_knowledge_graph", edgedefault="directed"
+    )
 
     for event in events:
         header = event.get("header", {})
@@ -92,7 +94,9 @@ def build_graphml_tree(
             target = body.get("target_node")
             if not all([edge_id, source, target]):
                 continue
-            edge = ET.SubElement(graph, "edge", id=edge_id, source=source, target=target)
+            edge = ET.SubElement(
+                graph, "edge", id=edge_id, source=source, target=target
+            )
             ET.SubElement(edge, "data", key="edge_author").text = author
             ET.SubElement(edge, "data", key="edge_timestamp").text = timestamp
             ET.SubElement(edge, "data", key="edge_hash").text = blob_hash

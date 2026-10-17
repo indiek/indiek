@@ -14,10 +14,13 @@ limitations under the License.
 
 ---
 
-Ed25519 signatures over canonical event bodies.
+Ed25519 signatures over whole events (format 3.0).
 
-What is signed: the raw 32-byte SHA-256 digest of the canonical bytes of the
-event *body* (see :mod:`indiek.core.canonical`).  Signatures are stored as
+What is signed: the canonical bytes (see :mod:`indiek.core.canonical`) of the
+whole event *minus* its ``signature`` field, i.e. ``{"body": …, "header": …}``.
+The bytes are signed directly (no pre-hash).  Signing the header binds each
+signature to its chain position (``prev_hash``), time and author, so a signed
+event cannot be replayed elsewhere in a chain.  Signatures are stored as
 lowercase hex."""
 
 from __future__ import annotations
@@ -31,26 +34,31 @@ import nacl.signing
 from pydantic import BaseModel
 
 from indiek.core.author import Author
-from indiek.core.canonical import canonical_hash
+from indiek.core.canonical import canonical_bytes, json_ready
 
 
-def sign_body(body: Mapping[str, Any] | BaseModel, author: Author) -> str:
-    """Sign the canonical digest of ``body`` and return the hex signature."""
-    return author.sign(canonical_hash(body)).hex()
+def signing_bytes(event: Mapping[str, Any] | BaseModel) -> bytes:
+    """The bytes an event's signature covers: the event without ``signature``."""
+    unsigned = json_ready(event)
+    unsigned.pop("signature", None)
+    return canonical_bytes(unsigned)
 
 
-def verify_body(
-    body: Mapping[str, Any] | BaseModel, signature_hex: str, public_key_hex: str
-) -> bool:
-    """Return whether ``signature_hex`` is ``public_key_hex``'s signature of ``body``.
+def sign_event(event: Mapping[str, Any] | BaseModel, author: Author) -> str:
+    """Sign ``event`` (any ``signature`` field is ignored); return the hex signature."""
+    return author.sign(signing_bytes(event)).hex()
 
-    Malformed keys or signatures verify as ``False`` rather than raising.
+
+def verify_event(event: Mapping[str, Any]) -> bool:
+    """Whether ``event["signature"]`` is ``header.author``'s signature of ``event``.
+
+    Malformed keys, signatures or events verify as ``False`` rather than raising.
     """
     try:
         verify_key = nacl.signing.VerifyKey(
-            public_key_hex, encoder=nacl.encoding.HexEncoder
+            event["header"]["author"], encoder=nacl.encoding.HexEncoder
         )
-        verify_key.verify(canonical_hash(body), bytes.fromhex(signature_hex))
-    except (nacl.exceptions.BadSignatureError, ValueError, TypeError):
+        verify_key.verify(signing_bytes(event), bytes.fromhex(event["signature"]))
+    except nacl.exceptions.BadSignatureError, ValueError, TypeError, KeyError:
         return False
     return True

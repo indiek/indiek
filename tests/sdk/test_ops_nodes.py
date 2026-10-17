@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import mimetypes
 from pathlib import Path
 from uuid import UUID, uuid7
@@ -22,7 +23,7 @@ from indiek.core.models import (
     Node,
     Tag,
 )
-from indiek.core.signing import verify_body
+from indiek.core.signing import verify_event
 from indiek.ops import events, nodes
 
 AUTHOR = Author.from_seed_hex("66" * 32)  # public test vector, not a secret
@@ -68,7 +69,7 @@ def test_append_base_chains_onto_the_current_head(root: Path) -> None:
     assert isinstance(first, EventModel)
     assert first.header.prev_hash is None
     assert first.header.author == AUTHOR.public_key_hex
-    assert verify_body(first.body, first.signature or "", AUTHOR.public_key_hex)
+    assert verify_event(json.loads(first.model_dump_json()))
 
     index = _index(root)
     second = events.append_base(index, AUTHOR, _node_body(index, "two"))

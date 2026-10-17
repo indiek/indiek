@@ -53,9 +53,10 @@ _EVENT_HEADER_SCHEMA: Dict[str, Any] = {
         "prev_hash": {
             "type": "string | null",
             "description": (
-                "SHA-256 hex digest (64 lower-case hex characters) of the *entire* "
-                "preceding event JSON object, serialised with keys sorted "
-                "alphabetically and no extra whitespace.  null for the genesis event."
+                "SHA-256 hex digest (64 lower-case hex characters) of the canonical "
+                "bytes of the *entire* preceding event, signature included (see "
+                "event_log.canonical_bytes).  null for the first event of a log, and "
+                "only there."
             ),
         },
         "timestamp": {
@@ -298,9 +299,8 @@ _EVENT_MODEL_SCHEMA: Dict[str, Any] = {
         "signature": {
             "type": "string | null",
             "description": (
-                "Hex-encoded Ed25519 signature produced by signing the SHA-256 "
-                "digest of the body serialised as compact JSON with keys sorted "
-                "alphabetically."
+                "Lowercase hex Ed25519 signature of the canonical bytes of the whole "
+                "event without its signature field ({header, body}); no pre-hash."
             ),
         },
     },
@@ -353,18 +353,30 @@ _EVENT_LOG_LAYOUT: Dict[str, Any] = {
         "Within a file, events are in append order (top = oldest)."
     ),
     "chain_integrity": (
-        "Each event's header.prev_hash is the SHA-256 of the *entire* preceding "
-        "event JSON (keys sorted, compact).  The genesis event has prev_hash=null.  "
+        "Each event's header.prev_hash is the SHA-256 hex of the canonical bytes of "
+        "the *entire* preceding event (signature included).  The first event of a "
+        "log has prev_hash=null, and no other event may.  "
         "The hash of the final event is the canonical unique identifier for the "
         "archive at that point in time: two archives are identical iff their last "
         "event hashes match."
     ),
+    "canonical_bytes": (
+        'json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False) '
+        "encoded as UTF-8: compact, keys sorted recursively, non-ASCII kept as raw "
+        "UTF-8.  Test vectors ship in the indiek package (indiek/spec/test_vectors.json)."
+    ),
+    "strict_parsing": (
+        "A log line is invalid if it is not one JSON object, repeats a key in any "
+        "object, or contains a non-integer number (float, exponent, NaN, Infinity)."
+    ),
     "signature_algorithm": {
         "signing_curve": "Ed25519",
+        "specification": "RFC 8032 (PureEd25519)",
         "library_reference": "PyNaCl / libsodium",
         "what_is_signed": (
-            "SHA-256 digest of the event body serialised as compact JSON with "
-            "keys sorted alphabetically (json.dumps(body, sort_keys=True))."
+            "The canonical bytes of the whole event without its signature field "
+            "({header, body}), signed directly (no pre-hash).  Signing the header "
+            "binds each signature to its chain position, time and author."
         ),
         "signature_encoding": "lowercase hex string",
     },
@@ -422,4 +434,3 @@ def write_manifest(
     )
     logger.info(f"MANIFEST written to {manifest_path}")
     return manifest_path
-

@@ -149,7 +149,9 @@ class Archive:
 
     def create_edge(self, source: str | UUID, target: str | UUID, content: str) -> UUID:
         """Create a directed ``text/plain`` edge between two existing nodes."""
-        edge_id = edges.create_edge(self._index, self._writer(), source, target, content)
+        edge_id = edges.create_edge(
+            self._index, self._writer(), source, target, content
+        )
         self.refresh()
         return edge_id
 
@@ -199,7 +201,9 @@ class Archive:
     ) -> IngestResult:
         """Create a node per entry of ``input_folder``, then an edge per line
         (``source,target,content``) of ``edges_file``."""
-        file_paths: Sequence[Path] = ingest.list_folder(input_folder) if input_folder else []
+        file_paths: Sequence[Path] = (
+            ingest.list_folder(input_folder) if input_folder else []
+        )
         edge_definitions: list[str] = []
         if edges_file:
             with open(edges_file, "rt", encoding="utf-8") as handle:
@@ -214,7 +218,9 @@ class Archive:
         finally:
             self.refresh()
 
-    def export_graphml(self, output_path: str | Path, tags: Sequence[str | UUID] = ()) -> Path:
+    def export_graphml(
+        self, output_path: str | Path, tags: Sequence[str | UUID] = ()
+    ) -> Path:
         """Write the base network as GraphML, optionally filtered by tags (OR)."""
         return export.export_graphml(self._index, output_path, tags)
 

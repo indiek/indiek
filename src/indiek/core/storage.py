@@ -23,17 +23,18 @@ Layout (relative to the archive root)::
     blobs/sha256/<hex[0:2]>/<hex[2:4]>/<sha256_hex>
 
 A log is read by sorting every ``*ndjson`` path under its directory
-lexicographically, then reading each file top to bottom."""
+lexicographically, then reading each file top to bottom.  Lines are parsed
+with :func:`indiek.core.canonical.parse_line` (strict)."""
 
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from indiek.core.canonical import parse_line
 from indiek.core.models import EventModel, MetaEventModel
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class EventLog:
         for file_path in self.files():
             with open(file_path, "rt", encoding="utf-8") as handle:
                 for line in handle:
-                    yield json.loads(line)
+                    yield parse_line(line)
 
     def append(self, event: EventModel | MetaEventModel) -> Path:
         """Append a signed event to the file of its header's UTC date."""

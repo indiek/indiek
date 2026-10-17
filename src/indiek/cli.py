@@ -46,7 +46,9 @@ def parse_comma_separated(value: str) -> list[str]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ik", description="The IndieK CLI application")
+    parser = argparse.ArgumentParser(
+        prog="ik", description="The IndieK CLI application"
+    )
     parser.add_argument("--dot-env", required=False, default=".env")
     parser.add_argument(
         "--logging-level",
@@ -127,12 +129,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     edge_parser = subparsers.add_parser("create_edge", help="Create a new edge")
-    edge_parser.add_argument("--content", required=True, help="Text content attached to edge")
     edge_parser.add_argument(
-        "--source-node", required=True, help="ID of source node (possibly human-friendly)"
+        "--content", required=True, help="Text content attached to edge"
     )
     edge_parser.add_argument(
-        "--target-node", required=True, help="ID of target node (possibly human-friendly)"
+        "--source-node",
+        required=True,
+        help="ID of source node (possibly human-friendly)",
+    )
+    edge_parser.add_argument(
+        "--target-node",
+        required=True,
+        help="ID of target node (possibly human-friendly)",
     )
 
     for kind in ("edge", "node"):
@@ -140,7 +148,9 @@ def build_parser() -> argparse.ArgumentParser:
             f"create_{kind}_tag", help=f"Create a tag for {kind}s"
         )
         tag_kind_parser.add_argument("--name", required=True, help="Tag Name")
-        tag_kind_parser.add_argument("--description", required=True, help="Tag Description")
+        tag_kind_parser.add_argument(
+            "--description", required=True, help="Tag Description"
+        )
 
     tag_parser = subparsers.add_parser("set_tag", help="Set a tag for an edge or node")
     tag_parser.add_argument(
@@ -207,7 +217,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _create_node(ik: Archive, args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+def _create_node(
+    ik: Archive, args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> None:
     resource_type = ResourceType(args.resource_type)
     media_type = MediaType(args.media_type) if args.media_type else None
     title = args.title
@@ -223,12 +235,17 @@ def _create_node(ik: Archive, args: argparse.Namespace, parser: argparse.Argumen
         if not args.uri:
             parser.error("--uri is required when --resource-type uri")
         node_id = ik.create_node(
-            resource_type=resource_type, uri=args.uri, title=title, media_type=media_type
+            resource_type=resource_type,
+            uri=args.uri,
+            title=title,
+            media_type=media_type,
         )
     elif resource_type is ResourceType.LOCAL_FILE:
         if not args.path:
             parser.error("--path is required when --resource-type local_file")
-        node_id = ik.create_node(resource_type=resource_type, path=args.path, title=title)
+        node_id = ik.create_node(
+            resource_type=resource_type, path=args.path, title=title
+        )
     else:
         node_id = ik.create_node(content, media_type=media_type, title=title)
     print(f"Node created: {node_id}")

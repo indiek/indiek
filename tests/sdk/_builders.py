@@ -12,7 +12,7 @@ from typing import Literal
 from uuid import UUID
 
 from indiek.core.author import Author
-from indiek.core.canonical import canonical_hash
+from indiek.core.canonical import event_hash
 from indiek.core.models import (
     Edge,
     EventBody,
@@ -29,7 +29,7 @@ from indiek.core.models import (
     SupersedeNode,
     Tag,
 )
-from indiek.core.signing import sign_body
+from indiek.core.signing import sign_event
 from indiek.core.storage import BlobStore, EventLog
 
 Kind = Literal["node", "edge"]
@@ -55,9 +55,9 @@ class Builder:
             header=EventHeader(prev_hash=self._base_head, author=signer.public_key_hex),
             body=body,
         )
-        event.signature = sign_body(event.body, signer)
+        event.signature = sign_event(event, signer)
         self.base_log.append(event)
-        self._base_head = canonical_hash(json.loads(event.model_dump_json())).hex()
+        self._base_head = event_hash(json.loads(event.model_dump_json()))
 
     def raw_meta(self, body: MetaEventBody, author: Author | None = None) -> None:
         signer = author or self.author
@@ -65,9 +65,9 @@ class Builder:
             header=EventHeader(prev_hash=self._meta_head, author=signer.public_key_hex),
             body=body,
         )
-        event.signature = sign_body(event.body, signer)
+        event.signature = sign_event(event, signer)
         self.meta_log.append(event)
-        self._meta_head = canonical_hash(json.loads(event.model_dump_json())).hex()
+        self._meta_head = event_hash(json.loads(event.model_dump_json()))
 
     def _blob(self, text: str) -> str:
         return self.blobs.put(text)
