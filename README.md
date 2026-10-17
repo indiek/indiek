@@ -1,4 +1,48 @@
 See [indiek.org](https://indiek.org) for broader context and documentation on the IndieK project.
+# SDK summary notes
+## Reading an archive
+To load an existing archive, read-only, from your hard-drive, do the following.
+```python
+from indiek import Archive
+ik = Archive.open("/foo/bar/your_archive")
+```
+In the SDK, "items" are events. You may inspect them as a list of `indiek.core.index.IndexedItem` with:
+```python
+items = list(ik.index.items.values())
+first_event = items[0]
+```
+### Inspecting a text blob
+Assuming your first event was the creation of a node with text data type, you may read the text with:
+```python
+from indiek.core.models import MediaType
+text_types = {MediaType.TEXT_PLAIN.value, MediaType.TEXT_MARKDOWN.value}
+if (item_media:=first_event.body['media_type']) in text_types:
+    ik.index.store.blobs.get_text(first_event.body['blob_hash'])
+else:
+    print(item_media, "is not a text media type")
+```
+### Inspecting an edge
+Below is a REPL illustrating how to display the text blob associated
+with the source and target nodes of the first edge from the `items` list above.
+```python
+>>> from indiek.core.index import ItemKind
+>>> for i in items:
+...     if i.kind == ItemKind.EDGE:
+...         break
+...         
+>>> i  # the edge
+IndexedItem(id=UUID('01a14a3a-0b6a-76a3-a0e4-de4eeb1d3705'), alias='e7', kind=<ItemKind.EDGE: 'edge'>, author='d2d39654817d03df5510a0a7e3a82b621b500774693d3f33bb150aadb4158100', body={'event_type': 'create_edge', 'resource_type': 'managed', 'media_type': 'text/plain; charset=utf-8', 'blob_hash': 'sha256:923b4b90ea64343e4a1cc2386c52fb2c0d197b0673cffbf1197169c27c8e4eb9', 'uri': None, 'path': None, 'file_size': None, 'file_hash': None, 'last_verified': None, 'title': None, 'body_type': 'edge', 'edge_id': '01a14a3a-0b6a-76a3-a0e4-de4eeb1d3705', 'source_node': '01a14a3a-071c-7192-81c8-3508c77d385f', 'target_node': '01a14a3a-0645-753b-8414-2deab807aeaa'}, tags=set())
+>>> source_target = [create_node for create_node in items if str(create_node.id) in { '01a14a3a-071c-7192-81c8-3508c77d385f', '01a14a3a-0645-753b-8414-2deab807aeaa'}]
+>>> len(source_target)
+2
+>>> ik.index.store.blobs.get_text(i.body['blob_hash'])  # the edge label 
+'states'
+>>> ik.index.store.blobs.get_text(source_target[0].body['blob_hash'])  # source node text
+"Gödel's *first* incompleteness theorem"
+>>> ik.index.store.blobs.get_text(source_target[1].body['blob_hash'])  # target node text
+'The thm stateemnt\n'
+```
+
 # `ik` CLI — API Reference
 
 Reference for all thirteen `ik` subcommands. The Python SDK behind them
