@@ -2,7 +2,9 @@
 
 All notable changes to the `indiek` package are documented here.
 
-## 0.11.0 
+## Unreleased
+
+## 0.11.0 - 2026-10-16 
 
 ### Added
 - (SDK-REORG-CLI-THIN) `ik keygen [--write] [--force]`: prints a dotenv-ready `IK_AUTHOR_PRIVATE_KEY=<seed>` line (public key on stderr), or with `--write` stores it in the `--dot-env` file (mode `600`), refusing to replace an existing key without `--force`.
