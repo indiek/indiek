@@ -14,7 +14,14 @@ from indiek.core.archive import ArchiveStore
 from indiek.core.author import Author
 from indiek.core.errors import ArchiveRuleError, UnknownItemError
 from indiek.core.index import ArchiveIndex, ItemKind
-from indiek.core.models import EventModel, MediaType, MetaEventModel, MetaEventType, Node, Tag
+from indiek.core.models import (
+    EventModel,
+    MediaType,
+    MetaEventModel,
+    MetaEventType,
+    Node,
+    Tag,
+)
 from indiek.core.signing import verify_body
 from indiek.ops import events, nodes
 
@@ -91,7 +98,9 @@ def test_extract_reads_text_files_as_text(files: dict[str, Path]) -> None:
 
 @pytest.mark.skipif(not MARKDOWN_IS_KNOWN, reason="stdlib mimetypes does not map .md")
 def test_extract_detects_markdown(files: dict[str, Path]) -> None:
-    assert nodes.extract_content_and_mime(str(files["md"]))[1] is MediaType.TEXT_MARKDOWN
+    assert (
+        nodes.extract_content_and_mime(str(files["md"]))[1] is MediaType.TEXT_MARKDOWN
+    )
 
 
 def test_extract_reads_binary_files_as_bytes(files: dict[str, Path]) -> None:
@@ -101,7 +110,10 @@ def test_extract_reads_binary_files_as_bytes(files: dict[str, Path]) -> None:
 
 
 def test_extract_treats_non_paths_as_literal_text() -> None:
-    assert nodes.extract_content_and_mime("just words") == ("just words", MediaType.TEXT_PLAIN)
+    assert nodes.extract_content_and_mime("just words") == (
+        "just words",
+        MediaType.TEXT_PLAIN,
+    )
 
 
 def test_detect_rejects_unsupported_types(files: dict[str, Path]) -> None:
@@ -118,13 +130,18 @@ def test_create_managed_text_node(root: Path) -> None:
     )
     assert isinstance(node_id, UUID)
     item = _index(root).get("e1")
-    assert (item.id, item.kind, item.author) == (node_id, ItemKind.NODE, AUTHOR.public_key_hex)
+    assert (item.id, item.kind, item.author) == (
+        node_id,
+        ItemKind.NODE,
+        AUTHOR.public_key_hex,
+    )
     body = item.body
     assert (body["resource_type"], body["media_type"], body["title"]) == (
         "managed",
         MediaType.TEXT_PLAIN.value,
         "G",
     )
+    assert (body["body_type"], body["uri"], body["path"]) == ("node", None, None)
     digest = hashlib.sha256("Gödel".encode("utf-8")).hexdigest()
     assert body["blob_hash"] == f"sha256:{digest}"
     assert _index(root).store.blobs.get(digest) == "Gödel".encode("utf-8")
@@ -157,7 +174,9 @@ def test_create_uri_node_writes_no_blob(root: Path) -> None:
     assert index.store.blobs.iter_hashes() == []
 
 
-def test_create_local_file_node_records_fingerprint(root: Path, files: dict[str, Path]) -> None:
+def test_create_local_file_node_records_fingerprint(
+    root: Path, files: dict[str, Path]
+) -> None:
     nodes.create_local_file_node(_index(root), AUTHOR, files["txt"])
     index = _index(root)
     body = index.get("e1").body
@@ -172,7 +191,9 @@ def test_create_local_file_node_records_fingerprint(root: Path, files: dict[str,
     assert index.store.blobs.iter_hashes() == []
 
 
-def test_create_local_file_node_rejects_missing_file(root: Path, tmp_path: Path) -> None:
+def test_create_local_file_node_rejects_missing_file(
+    root: Path, tmp_path: Path
+) -> None:
     with pytest.raises(ArchiveRuleError, match="Local file does not exist"):
         nodes.create_local_file_node(_index(root), AUTHOR, tmp_path / "absent.txt")
     assert _index(root).store.base_count == 0
@@ -208,7 +229,9 @@ def test_supersede_node_can_replace_title(root: Path) -> None:
 def test_supersede_node_rejects_edges(root: Path) -> None:
     build = Builder(root, AUTHOR)
     build.edge(build.node("a"), build.node("b"), "ab")
-    with pytest.raises(UnknownItemError, match="does not reference a base-network node"):
+    with pytest.raises(
+        UnknownItemError, match="does not reference a base-network node"
+    ):
         nodes.supersede_node(_index(root), AUTHOR, "e3", "x")
 
 

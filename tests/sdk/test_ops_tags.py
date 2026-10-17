@@ -46,12 +46,18 @@ def _meta_types(root: Path) -> list[str]:
 
 @pytest.mark.parametrize("kind", ["node", "edge"])
 def test_create_tag(root: Path, kind: Literal["node", "edge"]) -> None:
-    tag_id = tags.create_tag(_index(root), AUTHOR, "theorem", "A proven statement", kind)
+    tag_id = tags.create_tag(
+        _index(root), AUTHOR, "theorem", "A proven statement", kind
+    )
     index = _index(root)
     item = index.get("m1")
     assert item.id == tag_id
     assert item.kind is ItemKind(f"{kind}_tag")
-    assert (item.body["name"], item.body["description"]) == ("theorem", "A proven statement")
+    assert (item.body["name"], item.body["description"]) == (
+        "theorem",
+        "A proven statement",
+    )
+    assert item.body["body_type"] == "tag"
     assert item.author == AUTHOR.public_key_hex
     assert index.store.base_count == 0
     assert index.store.blobs.iter_hashes() == []
@@ -75,10 +81,16 @@ def test_tag_a_node(root: Path, graph: tuple[UUID, UUID, UUID]) -> None:
     tag_id = tags.create_tag(_index(root), AUTHOR, "t", "d", "node")
     assignment = tags.set_tag(_index(root), AUTHOR, "m1", "e1")
     index = _index(root)
-    assert _meta_types(root) == ["create_node_tag", "create_node_representation", "set_node_tag"]
+    assert _meta_types(root) == [
+        "create_node_tag",
+        "create_node_representation",
+        "set_node_tag",
+    ]
     representation = index.representation_of(graph[0])
     assert representation == index.aliases["m2"]
     item = index.get(assignment)
+    assert item.body["body_type"] == "edge"
+    assert index.get("m2").body["underlying_id"] == str(graph[0])
     assert item.kind is ItemKind.NODE_TAG_ASSIGNMENT
     assert item.body["source_node"] == str(tag_id)
     assert item.body["target_node"] == str(representation)
@@ -92,7 +104,9 @@ def test_tag_an_edge_by_uuid(root: Path, graph: tuple[UUID, UUID, UUID]) -> None
     assert _index(root).items[graph[2]].tags == {tag_id}
 
 
-def test_second_tag_reuses_representation(root: Path, graph: tuple[UUID, UUID, UUID]) -> None:
+def test_second_tag_reuses_representation(
+    root: Path, graph: tuple[UUID, UUID, UUID]
+) -> None:
     t1 = tags.create_tag(_index(root), AUTHOR, "t1", "d", "node")
     tags.set_tag(_index(root), AUTHOR, t1, "e1")
     t2 = tags.create_tag(_index(root), AUTHOR, "t2", "d", "node")
@@ -113,7 +127,9 @@ def test_unknown_tag(root: Path, graph: tuple[UUID, UUID, UUID]) -> None:
 
 
 @pytest.mark.parametrize("source", ["e1", "m2"])
-def test_source_must_be_a_tag(root: Path, graph: tuple[UUID, UUID, UUID], source: str) -> None:
+def test_source_must_be_a_tag(
+    root: Path, graph: tuple[UUID, UUID, UUID], source: str
+) -> None:
     tags.create_tag(_index(root), AUTHOR, "t", "d", "node")  # m1
     tags.set_tag(_index(root), AUTHOR, "m1", "e1")  # m2 representation, m3 meta edge
     before = _meta_types(root)
@@ -124,7 +140,9 @@ def test_source_must_be_a_tag(root: Path, graph: tuple[UUID, UUID, UUID], source
 
 def test_only_the_tag_author(root: Path, graph: tuple[UUID, UUID, UUID]) -> None:
     tags.create_tag(_index(root), AUTHOR, "t", "d", "node")
-    with pytest.raises(AuthorshipError, match="Only the tag's author may use this operation"):
+    with pytest.raises(
+        AuthorshipError, match="Only the tag's author may use this operation"
+    ):
         tags.set_tag(_index(root), OTHER, "m1", "e1")
     assert _meta_types(root) == ["create_node_tag"]
 
@@ -140,7 +158,9 @@ def test_target_must_exist(root: Path) -> None:
 
 def test_target_must_not_be_meta(root: Path) -> None:
     tags.create_tag(_index(root), AUTHOR, "t", "d", "node")
-    with pytest.raises(ArchiveRuleError, match="should not be an item from the meta network"):
+    with pytest.raises(
+        ArchiveRuleError, match="should not be an item from the meta network"
+    ):
         tags.set_tag(_index(root), AUTHOR, "m1", "m1")
 
 
@@ -166,7 +186,10 @@ def test_kind_mismatch_keeps_representation_and_warns(
     ):
         tags.set_tag(_index(root), AUTHOR, "m1", target)
     target_kind = "node" if target == "e1" else "edge"
-    assert _meta_types(root) == [f"create_{tag_kind}_tag", f"create_{target_kind}_representation"]
+    assert _meta_types(root) == [
+        f"create_{tag_kind}_tag",
+        f"create_{target_kind}_representation",
+    ]
     warnings = [r for r in caplog.records if r.name == "indiek.ops.tags"]
     assert len(warnings) == 1
     assert str(_index(root).aliases["m2"]) in warnings[0].getMessage()

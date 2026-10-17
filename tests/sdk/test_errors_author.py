@@ -26,7 +26,9 @@ def test_every_error_derives_from_indiek_error(error_cls: type[Exception]) -> No
     assert issubclass(error_cls, IndieKError)
 
 
-@pytest.mark.parametrize("error_cls", [UnknownItemError, AuthorshipError, ArchiveRuleError])
+@pytest.mark.parametrize(
+    "error_cls", [UnknownItemError, AuthorshipError, ArchiveRuleError]
+)
 def test_user_facing_errors_remain_value_errors(error_cls: type[Exception]) -> None:
     """Pre-0.11 callers caught ``ValueError``; keep that contract."""
     assert issubclass(error_cls, ValueError)
@@ -36,7 +38,9 @@ def test_integrity_error_is_not_a_value_error() -> None:
     assert not issubclass(IntegrityError, ValueError)
 
 
-def test_from_seed_hex_matches_pynacl(author_seed_hex: str, author_public_key: str) -> None:
+def test_from_seed_hex_matches_pynacl(
+    author_seed_hex: str, author_public_key: str
+) -> None:
     author = Author.from_seed_hex(author_seed_hex)
     assert author.public_key_hex == author_public_key
     assert isinstance(author.signing_key, nacl.signing.SigningKey)

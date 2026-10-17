@@ -24,6 +24,9 @@ All notable changes to the `indiek` package are documented here.
 - Tests for that warning in `test_set_tag.py` (`caplog` assertions in `test_tag_kind_must_match_target_kind`, new `test_no_warning_when_rejected_target_already_has_representation`). Suite: 57 passed.
 - `[tool.pytest.ini_options]` in `pyproject.toml` (`testpaths = ["tests"]`, `pythonpath = ["src"]`).
 
+- (SDK-REORG-TESTS-LEAN) `tests/cli/test_cli_commands.py`: CLI-only behaviour of the archive subcommands (usage errors, flag validation, printed ids, CLI-side defaults); `tests/cli/conftest.py` holds `run_cli`.
+- (SDK-REORG-TESTS-LEAN) `README.md` section "Errors and exit codes".
+
 ### Changed
 - (SDK-REORG-CLI-THIN) All logging goes to **stderr** (was stdout); stdout carries only command output.
 - (SDK-REORG-CLI-THIN) `ik config` prints `IK_ARCHIVE_PATH=<value>` / `IK_ARCHIVE_PATH is not set` on stdout instead of logging at WARNING, and needs neither a key nor an archive.
@@ -38,6 +41,9 @@ All notable changes to the `indiek` package are documented here.
 - `README.md` corrected where it disagreed with the source.
 - `README.md`: documented `create_node_tag`; replaced the claim that tag kind is descriptive with the enforced rule (edge tags only on edges, node tags only on nodes) and its two error messages; noted that a rejected first-time `set_tag` still appends the representation event, documented as intended and accompanied by a logged warning.
 
+- (SDK-REORG-TESTS-LEAN) **CLI errors:** a failed command prints one line `ik: error: <message>` on stderr and exits 1, without traceback (`--logging-level DEBUG` logs it). Catches every `IndieKError`. Missing `--uri` / `--path` are now argparse usage errors (exit 2). A malformed `IK_AUTHOR_PRIVATE_KEY` exits 1 with `IK_AUTHOR_PRIVATE_KEY is invalid: <reason>`, never echoing the key.
+- (SDK-REORG-TESTS-LEAN) Tests split into `tests/sdk/` and `tests/cli/`; the root `conftest.py` no longer imports `indiek.cli`, so SDK tests never load `dotenv`/`rich`. All tests formatted with `ruff format`. Suite: 218 → 192 tests (duplicates removed, no coverage lost).
+
 ### Fixed
 - (SDK-REORG-CLI-THIN) `--logging-level` is case-insensitive and validated with argparse `choices` (lowercase names used to crash with `TypeError`, unknown ones with `AttributeError`).
 - (SDK-REORG-CLI-THIN) `ik config` can bootstrap a fresh setup (it used to crash with `TypeError` when `IK_ARCHIVE_PATH` was unset). `test_readme_claims.py`: the two tests that pinned these bugs now pin the fixed behaviour. Suite: 218 passed.
@@ -50,3 +56,15 @@ All notable changes to the `indiek` package are documented here.
 ### Removed
 - (SDK-REORG-LAYOUT) **Breaking for direct importers:** the flat modules `indiek.{blob, cfg, create_edge, create_edge_tag, create_node, create_node_tag, events, export, ingest, manifest, models, set_tag, signing, supersede_edge, supersede_node}`. Use `indiek` / `indiek.core` / `indiek.ops`. `fastAPI/` still imports them and is broken until DESKTOP:FASTAPI-MIGRATE-TO-SDK.
 - (SDK-REORG-LAYOUT) `tests/test_signing_units.py`, superseded by `tests/sdk/test_canonical_signing.py` and `tests/sdk/test_errors_author.py`.
+
+- (SDK-REORG-TESTS-LEAN) `tests/test_create_node.py`, `test_create_edge.py`, `test_create_edge_tag.py`, `test_set_tag.py`: assertions not already in `tests/sdk/` were ported there (raw `body_type`, `underlying_id` fields) or to `tests/cli/test_cli_commands.py`.
+- (SDK-REORG-TESTS-LEAN) Repo clutter: `lib/`, `graphml_exports/`, `sandbox/`, `tmparchive.zip`, and the stray `CHANGELOG` file (its 0.9.0/0.10.0 history is merged below).
+
+## 0.10.0 - 2026-10-16
+### Added
+- unit tests
+- Apache 2.0 license
+
+## 0.9.0 - 2026-08-27
+### Added
+- Initial release.

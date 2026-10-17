@@ -106,9 +106,21 @@ Which commands need what:
   `AuthorshipError: An author is required to write to an archive`.
 
 A missing `IK_ARCHIVE_PATH` exits with status 2; a leading `~` is expanded. A
-non-hex key raises a `ValueError` from `bytes.fromhex`; a key of the wrong
-length raises `ValueError: Invalid key length. Ed25519 private key must be 32 bytes.`
+malformed key (non-hex, or not 32 bytes) exits with status 1 and
+`ik: error: IK_AUTHOR_PRIVATE_KEY is invalid: <reason>`; the key itself is never printed.
 Generate a key with [`ik keygen`](#ik-keygen).
+
+### Errors and exit codes
+
+| Exit status | Meaning |
+| ----------- | ------- |
+| `0` | Success. |
+| `1` | The command failed (integrity, unknown item, authorship, archive rule, invalid key). One line `ik: error: <message>` is printed on stderr, with no traceback; `--logging-level DEBUG` adds the traceback. |
+| `2` | Usage error from argument parsing: missing or invalid flag, or `IK_ARCHIVE_PATH` not set. |
+
+Messages quoted below as `ErrorClass: message` are the exceptions raised by the
+Python SDK (`indiek.IndieKError` and subclasses); the CLI prints the same
+`message` after `ik: error:`.
 
 ### Integrity verification
 
@@ -204,8 +216,8 @@ ik create_node --content ./notes/limits.md --title "Limits"
 
 Records a reference to an external URL. No network access, no blob is written.
 `--media-type` **is** honoured here and stored as a hint; it may be omitted.
-`--content` and `--path` are ignored. Missing `--uri` raises
-`ValueError: --uri is required when --resource-type uri`.
+`--content` and `--path` are ignored. Missing `--uri` is a usage
+error (exit 2): `--uri is required when --resource-type uri`.
 
 ```bash
 ik create_node --resource-type uri --uri https://arxiv.org/abs/1234.5678 \
@@ -224,7 +236,7 @@ The media type is detected from the filename with the same restricted mapping
 as managed files, so unsupported extensions fail here too. `--title` defaults
 to the file stem. A missing or non-regular file raises
 `ValueError: Local file does not exist or is not a regular file: <path>`, and a
-missing `--path` raises `ValueError: --path is required when --resource-type local_file`.
+missing `--path` is a usage error (exit 2): `--path is required when --resource-type local_file`.
 
 ```bash
 ik create_node --resource-type local_file --path ~/scans/page.tiff

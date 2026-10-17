@@ -75,7 +75,9 @@ class Builder:
     # -- base network ------------------------------------------------------
 
     def node(self, text: str, title: str | None = None) -> UUID:
-        body = Node(blob_hash=self._blob(text), media_type=MediaType.TEXT_PLAIN, title=title)
+        body = Node(
+            blob_hash=self._blob(text), media_type=MediaType.TEXT_PLAIN, title=title
+        )
         self.raw_base(body)
         return body.node_id
 
@@ -90,7 +92,11 @@ class Builder:
         return body.edge_id
 
     def supersede_node(
-        self, node_id: UUID, text: str, title: str | None = None, author: Author | None = None
+        self,
+        node_id: UUID,
+        text: str,
+        title: str | None = None,
+        author: Author | None = None,
     ) -> None:
         body = SupersedeNode(
             node_id=node_id,
@@ -100,7 +106,9 @@ class Builder:
         )
         self.raw_base(body, author)
 
-    def supersede_edge(self, edge_id: UUID, source: UUID, target: UUID, text: str) -> None:
+    def supersede_edge(
+        self, edge_id: UUID, source: UUID, target: UUID, text: str
+    ) -> None:
         body = SupersedeEdge(
             edge_id=edge_id,
             source_node=source,
@@ -129,7 +137,9 @@ class Builder:
         self.raw_meta(body)
         return body.node_id
 
-    def assign(self, tag_id: UUID, representation_id: UUID, kind: Kind = "node") -> UUID:
+    def assign(
+        self, tag_id: UUID, representation_id: UUID, kind: Kind = "node"
+    ) -> UUID:
         body = MetaEdge(
             source_node=tag_id,
             target_node=representation_id,

@@ -84,10 +84,20 @@ def test_golden_archive_is_byte_stable(
 
     ik("create_node", "--content", "Gödel's incompleteness theorem")  # e1
     ik("create_node", "--content", "Peano arithmetic", "--title", "PA")  # e2
-    ik("create_edge", "--source-node", "e1", "--target-node", "e2", "--content", "about")  # e3
+    ik(
+        "create_edge",
+        "--source-node",
+        "e1",
+        "--target-node",
+        "e2",
+        "--content",
+        "about",
+    )  # e3
     ik("supersede_node", "--node-id", "e1", "--content", "Gödel's *first* theorem")
     ik("supersede_edge", "--edge-id", "e3", "--content", "is about")
-    ik("create_node_tag", "--name", "theorem", "--description", "A proven statement")  # m1
+    ik(
+        "create_node_tag", "--name", "theorem", "--description", "A proven statement"
+    )  # m1
     ik("set_tag", "--tag", "m1", "--id", "e1")  # m2 representation, m3 meta edge
 
     base_head = _head_hash(archive_root)

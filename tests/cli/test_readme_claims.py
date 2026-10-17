@@ -16,7 +16,9 @@ def _creates(events: list[dict]) -> list[dict]:
     return [e for e in events if e["body"]["event_type"].startswith(("create", "set"))]
 
 
-def test_lowercase_logging_level_is_accepted(archive_root, author_seed_hex, monkeypatch):
+def test_lowercase_logging_level_is_accepted(
+    archive_root, author_seed_hex, monkeypatch
+):
     monkeypatch.setenv("IK_ARCHIVE_PATH", str(archive_root))
     monkeypatch.setenv("IK_AUTHOR_PRIVATE_KEY", author_seed_hex)
     monkeypatch.setattr("sys.argv", ["ik", "--logging-level", "debug", "read"])
@@ -76,10 +78,14 @@ def test_supersede_edge_keeps_endpoints(run_cli, base_events):
     assert sup["media_type"].startswith("text/plain")
 
 
-def test_supersede_rejects_wrong_kind(run_cli):
+def test_supersede_rejects_wrong_kind(run_cli, capsys):
     run_cli("create_node", "--content", "a")
-    with pytest.raises(ValueError, match="does not reference a base-network edge"):
+    with pytest.raises(SystemExit) as excinfo:
         run_cli("supersede_edge", "--edge-id", "e1", "--content", "x")
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert "ik: error:" in err
+    assert "does not reference a base-network edge" in err
 
 
 def test_ingest_keeps_newline_and_stores_subdir_path(

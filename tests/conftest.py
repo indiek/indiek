@@ -1,4 +1,4 @@
-"""Shared fixtures for the ``ik`` CLI test-suite.
+"""Shared fixtures for the IndieK test-suite (SDK and CLI).
 
 Every test runs against a throwaway archive created under pytest's ``tmp_path``
 (the OS temp directory), never inside the repository, and signs with an
@@ -16,8 +16,6 @@ from typing import Any, Callable, Iterator
 import nacl.encoding
 import nacl.signing
 import pytest
-
-from indiek import cli as ik_cli
 
 
 def _generate_author() -> tuple[str, str]:
@@ -58,40 +56,6 @@ def archive_root(tmp_path: Path) -> Path:
     root = tmp_path / "archive"
     root.mkdir()
     return root
-
-
-@pytest.fixture
-def run_cli(
-    archive_root: Path,
-    author_seed_hex: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> Callable[..., None]:
-    """Invoke ``indiek.cli.main()`` as if from the shell, against ``archive_root``.
-
-    ``--dot-env`` is pointed at a non-existent file so that ``load_dotenv`` is a
-    no-op and only the environment set here is visible.  ``seed_hex`` lets a
-    single test act as a different author.
-    """
-
-    empty_dotenv = archive_root.parent / "absent.env"
-
-    def _run(*argv: str, seed_hex: str | None = None) -> None:
-        monkeypatch.setenv("IK_ARCHIVE_PATH", str(archive_root))
-        monkeypatch.setenv("IK_AUTHOR_PRIVATE_KEY", seed_hex or author_seed_hex)
-        monkeypatch.setattr(
-            "sys.argv",
-            [
-                "ik",
-                "--dot-env",
-                str(empty_dotenv),
-                "--logging-level",
-                "CRITICAL",
-                *argv,
-            ],
-        )
-        ik_cli.main()
-
-    return _run
 
 
 def _read_ndjson(log_root: Path) -> list[dict[str, Any]]:

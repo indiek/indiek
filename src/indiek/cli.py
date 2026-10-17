@@ -19,8 +19,9 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import NoReturn
 
-from indiek import Archive, Author, MediaType, ResourceType
+from indiek import Archive, Author, IndieKError, MediaType, ResourceType
 
 try:
     from dotenv import dotenv_values, load_dotenv, set_key
@@ -220,13 +221,13 @@ def _create_node(ik: Archive, args: argparse.Namespace, parser: argparse.Argumen
 
     if resource_type is ResourceType.URI:
         if not args.uri:
-            raise ValueError("--uri is required when --resource-type uri")
+            parser.error("--uri is required when --resource-type uri")
         node_id = ik.create_node(
             resource_type=resource_type, uri=args.uri, title=title, media_type=media_type
         )
     elif resource_type is ResourceType.LOCAL_FILE:
         if not args.path:
-            raise ValueError("--path is required when --resource-type local_file")
+            parser.error("--path is required when --resource-type local_file")
         node_id = ik.create_node(resource_type=resource_type, path=args.path, title=title)
     else:
         node_id = ik.create_node(content, media_type=media_type, title=title)
@@ -270,6 +271,13 @@ def _config(args: argparse.Namespace, archive_path: str | None) -> None:
         print(f"{ARCHIVE_PATH_VAR}={args.set_archive_path}")
 
 
+def _fail(message: str) -> NoReturn:
+    """Report a failed command on one stderr line and exit 1 (traceback at DEBUG)."""
+    logger.debug("ik failed", exc_info=True)
+    print(f"ik: error: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -289,8 +297,20 @@ def main() -> None:
 
     if not archive_path:
         parser.error(f"{ARCHIVE_PATH_VAR} is not set (environment or --dot-env file)")
+    try:
+        _run_archive_command(args, parser, archive_path)
+    except IndieKError as exc:
+        _fail(str(exc))
+
+
+def _run_archive_command(
+    args: argparse.Namespace, parser: argparse.ArgumentParser, archive_path: str
+) -> None:
     seed_hex = os.getenv(PRIVATE_KEY_VAR)
-    author = Author.from_seed_hex(seed_hex) if seed_hex else None  # None: read-only
+    try:
+        author = Author.from_seed_hex(seed_hex) if seed_hex else None  # None: read-only
+    except ValueError as exc:  # never echo the key itself
+        _fail(f"{PRIVATE_KEY_VAR} is invalid: {exc}")
     logger.debug("archive_path=%s", archive_path)
     ik = Archive.open(archive_path, author=author)
 

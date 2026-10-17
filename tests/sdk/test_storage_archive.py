@@ -35,7 +35,9 @@ def _append_node(
 ) -> dict[str, Any]:
     digest = blobs.put(text)
     event = EventModel(
-        header=EventHeader(prev_hash=prev_hash, author=AUTHOR.public_key_hex, timestamp=when),
+        header=EventHeader(
+            prev_hash=prev_hash, author=AUTHOR.public_key_hex, timestamp=when
+        ),
         body=Node(blob_hash=digest, media_type=MediaType.TEXT_PLAIN, title=None),
     )
     event.signature = sign_body(event.body, AUTHOR)
@@ -69,7 +71,9 @@ def log(root: Path) -> EventLog:
 # --- BlobStore -------------------------------------------------------------
 
 
-def test_put_text_stores_utf8_under_a_sharded_path(blobs: BlobStore, root: Path) -> None:
+def test_put_text_stores_utf8_under_a_sharded_path(
+    blobs: BlobStore, root: Path
+) -> None:
     digest = blobs.put("Gödel")
     assert digest == hashlib.sha256("Gödel".encode("utf-8")).hexdigest()
     path = root / "blobs" / "sha256" / digest[:2] / digest[2:4] / digest
@@ -116,7 +120,9 @@ def test_empty_log_iterates_nothing(log: EventLog) -> None:
     assert log.files() == []
 
 
-def test_log_is_date_sharded_and_read_in_order(log: EventLog, blobs: BlobStore, root: Path) -> None:
+def test_log_is_date_sharded_and_read_in_order(
+    log: EventLog, blobs: BlobStore, root: Path
+) -> None:
     first = _append_node(log, blobs, "one", None, DAY1)
     second = _append_node(log, blobs, "two", _canonical_hex(first), DAY2)
     assert log.files() == [
@@ -133,7 +139,9 @@ def test_empty_chain(log: EventLog, blobs: BlobStore) -> None:
     assert verify_chain(log, blobs) == ChainState(head=None, count=0)
 
 
-def test_valid_chain_head_is_hash_of_last_event(log: EventLog, blobs: BlobStore) -> None:
+def test_valid_chain_head_is_hash_of_last_event(
+    log: EventLog, blobs: BlobStore
+) -> None:
     first = _append_node(log, blobs, "one", None)
     second = _append_node(log, blobs, "two", _canonical_hex(first))
     assert verify_chain(log, blobs) == ChainState(head=_canonical_hex(second), count=2)
@@ -168,7 +176,9 @@ def test_missing_blob(log: EventLog, blobs: BlobStore) -> None:
         verify_chain(log, blobs)
 
 
-def test_archive_store_open_verifies_both_logs(root: Path, log: EventLog, blobs: BlobStore) -> None:
+def test_archive_store_open_verifies_both_logs(
+    root: Path, log: EventLog, blobs: BlobStore
+) -> None:
     event = _append_node(log, blobs, "one", None)
     store = ArchiveStore.open(root)
     assert (store.base_head, store.base_count) == (_canonical_hex(event), 1)
@@ -176,7 +186,9 @@ def test_archive_store_open_verifies_both_logs(root: Path, log: EventLog, blobs:
     assert store.meta_log.path == root / "meta" / "events"
 
 
-def test_archive_store_open_raises_on_corruption(root: Path, log: EventLog, blobs: BlobStore) -> None:
+def test_archive_store_open_raises_on_corruption(
+    root: Path, log: EventLog, blobs: BlobStore
+) -> None:
     _append_node(log, blobs, "one", None)
     _rewrite(log, 0, lambda e: e.update(signature="00" * 64))
     with pytest.raises(IntegrityError):

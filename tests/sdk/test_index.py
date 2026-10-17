@@ -12,7 +12,13 @@ from indiek.core.archive import ArchiveStore
 from indiek.core.author import Author
 from indiek.core.errors import IntegrityError, UnknownItemError
 from indiek.core.index import ArchiveIndex, IndexedItem, ItemKind
-from indiek.core.models import MediaType, MetaEdge, MetaEventType, SupersedeEdge, SupersedeNode
+from indiek.core.models import (
+    MediaType,
+    MetaEdge,
+    MetaEventType,
+    SupersedeEdge,
+    SupersedeNode,
+)
 
 AUTHOR = Author.from_seed_hex("44" * 32)  # public test vector, not a secret
 OTHER = Author.from_seed_hex("55" * 32)
@@ -102,7 +108,11 @@ def test_items_are_typed(root: Path, build: Builder) -> None:
 
     node = items[a]
     assert isinstance(node, IndexedItem)
-    assert (node.alias, node.kind, node.author) == ("e1", ItemKind.NODE, AUTHOR.public_key_hex)
+    assert (node.alias, node.kind, node.author) == (
+        "e1",
+        ItemKind.NODE,
+        AUTHOR.public_key_hex,
+    )
     assert node.body["title"] == "A"
     assert not node.is_meta and not node.is_edge
     assert items[ab].kind is ItemKind.EDGE and items[ab].is_edge
@@ -151,7 +161,9 @@ def test_two_tags_on_one_item(root: Path, build: Builder) -> None:
 def test_supersede_of_unknown_item(root: Path, build: Builder) -> None:
     digest = build.blobs.put("x")
     build.raw_base(
-        SupersedeNode(node_id=uuid7(), blob_hash=digest, media_type=MediaType.TEXT_PLAIN)
+        SupersedeNode(
+            node_id=uuid7(), blob_hash=digest, media_type=MediaType.TEXT_PLAIN
+        )
     )
     with pytest.raises(IntegrityError, match="Supersede event references unknown item"):
         _index(root)
@@ -162,11 +174,16 @@ def test_supersede_type_mismatch(root: Path, build: Builder) -> None:
     digest = build.blobs.put("x")
     build.raw_base(
         SupersedeEdge(
-            edge_id=a, source_node=a, target_node=b, blob_hash=digest,
+            edge_id=a,
+            source_node=a,
+            target_node=b,
+            blob_hash=digest,
             media_type=MediaType.TEXT_PLAIN,
         )
     )
-    with pytest.raises(IntegrityError, match="Supersede event type does not match item"):
+    with pytest.raises(
+        IntegrityError, match="Supersede event type does not match item"
+    ):
         _index(root)
 
 
@@ -174,16 +191,22 @@ def test_supersede_edge_cannot_change_endpoints(root: Path, build: Builder) -> N
     a, b, c = build.node("a"), build.node("b"), build.node("c")
     ab = build.edge(a, b, "ab")
     build.supersede_edge(ab, a, c, "ac")
-    with pytest.raises(IntegrityError, match="Supersede edge events cannot change endpoints"):
+    with pytest.raises(
+        IntegrityError, match="Supersede edge events cannot change endpoints"
+    ):
         _index(root)
 
 
 def test_assignment_to_unknown_representation(root: Path, build: Builder) -> None:
     tag = build.tag("t")
     build.raw_meta(
-        MetaEdge(source_node=tag, target_node=uuid7(), event_type=MetaEventType.SET_NODE_TAG)
+        MetaEdge(
+            source_node=tag, target_node=uuid7(), event_type=MetaEventType.SET_NODE_TAG
+        )
     )
-    with pytest.raises(IntegrityError, match="Tag assignment references an unknown representation"):
+    with pytest.raises(
+        IntegrityError, match="Tag assignment references an unknown representation"
+    ):
         _index(root)
 
 

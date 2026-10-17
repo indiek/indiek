@@ -24,6 +24,19 @@ def _rewrite_events(
         )
 
 
+def _assert_cli_error(
+    capsys: pytest.CaptureFixture[str], run: Callable[[], None], message: str
+) -> None:
+    """The command fails with exit 1 and a one-line ``ik: error:`` on stderr."""
+    with pytest.raises(SystemExit) as excinfo:
+        run()
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert "ik: error:" in err
+    assert message in err
+    assert "Traceback" not in err
+
+
 def test_dot_env_supplies_archive_path_and_key(
     tmp_path: Path,
     archive_root: Path,
@@ -94,6 +107,7 @@ def test_logging_level_sets_root_logger(
 def test_tampered_signature_is_detected(
     run_cli: Callable[..., None],
     archive_root: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     run_cli("create_node", "--content", "original")
 
@@ -104,13 +118,17 @@ def test_tampered_signature_is_detected(
 
     _rewrite_events(archive_root, flip_signature)
 
-    with pytest.raises(Exception, match="Data tampered or bad author!"):
-        run_cli("create_node", "--content", "next")
+    _assert_cli_error(
+        capsys,
+        lambda: run_cli("create_node", "--content", "next"),
+        "Data tampered or bad author!",
+    )
 
 
 def test_broken_chain_is_detected(
     run_cli: Callable[..., None],
     archive_root: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     run_cli("create_node", "--content", "first")
     run_cli("create_node", "--content", "second")
@@ -120,17 +138,22 @@ def test_broken_chain_is_detected(
 
     _rewrite_events(archive_root, break_chain)
 
-    with pytest.raises(Exception, match="Chain broken!"):
-        run_cli("create_node", "--content", "third")
+    _assert_cli_error(
+        capsys, lambda: run_cli("create_node", "--content", "third"), "Chain broken!"
+    )
 
 
 def test_corrupted_blob_is_detected(
     run_cli: Callable[..., None],
     blob_paths: Callable[[], list[Path]],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     run_cli("create_node", "--content", "blob body")
     (blob,) = blob_paths()
     blob.write_bytes(blob.read_bytes() + b" tampered")
 
-    with pytest.raises(Exception, match="File corrupted or missing!"):
-        run_cli("create_node", "--content", "next")
+    _assert_cli_error(
+        capsys,
+        lambda: run_cli("create_node", "--content", "next"),
+        "File corrupted or missing!",
+    )

@@ -10,16 +10,14 @@ from typing import Callable
 
 import pytest
 
-from indiek import ArchiveRuleError, Author, AuthorshipError
+from indiek import Author
 from indiek import cli as ik_cli
 
 SEED_LINE = re.compile(r"^IK_AUTHOR_PRIVATE_KEY=([0-9a-f]{64})$", re.MULTILINE)
 
 
 @pytest.fixture
-def ik(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Callable[..., None]:
+def ik(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
     """Run ``ik`` with exactly the given environment (``None`` unsets a variable)."""
     dotenv = tmp_path / "absent.env"
 
@@ -39,7 +37,10 @@ def ik(
 
 @pytest.fixture
 def env(archive_root: Path, author_seed_hex: str) -> dict[str, str | None]:
-    return {"IK_ARCHIVE_PATH": str(archive_root), "IK_AUTHOR_PRIVATE_KEY": author_seed_hex}
+    return {
+        "IK_ARCHIVE_PATH": str(archive_root),
+        "IK_AUTHOR_PRIVATE_KEY": author_seed_hex,
+    }
 
 
 # --- logging -----------------------------------------------------------------
@@ -53,10 +54,13 @@ def test_logs_go_to_stderr_and_results_to_stdout(
     ik("create_node", "--content", "a node", env=env)
     ik("create_edge_tag", "--name", "t", "--description", "d", env=env)
     capsys.readouterr()
-    with pytest.raises(ArchiveRuleError):
+    with pytest.raises(SystemExit) as excinfo:
         ik("set_tag", "--tag", "m1", "--id", "e1", env=env)  # WARNING, then error
+    assert excinfo.value.code == 1
     captured = capsys.readouterr()
     assert "remains in the meta log" in captured.err
+    assert "ik: error: An edge tag should point" in captured.err
+    assert "Traceback" not in captured.err
     assert captured.out == ""
 
 
@@ -205,16 +209,30 @@ def test_read_only_commands_need_no_key(
 
 
 def test_write_without_key_is_refused(
-    ik: Callable[..., None], env: dict[str, str | None], base_events: Callable[[], list]
+    ik: Callable[..., None],
+    env: dict[str, str | None],
+    base_events: Callable[[], list],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    with pytest.raises(AuthorshipError, match="An author is required"):
+    with pytest.raises(SystemExit) as excinfo:
         ik("create_node", "--content", "x", env={**env, "IK_AUTHOR_PRIVATE_KEY": None})
+    assert excinfo.value.code == 1
+    assert "ik: error: An author is required" in capsys.readouterr().err
     assert base_events() == []
 
 
-def test_bad_key_is_still_rejected(ik: Callable[..., None], env: dict[str, str | None]) -> None:
-    with pytest.raises(ValueError, match="Invalid key length"):
-        ik("read", env={**env, "IK_AUTHOR_PRIVATE_KEY": "ab" * 16})
+def test_bad_key_is_still_rejected(
+    ik: Callable[..., None],
+    env: dict[str, str | None],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    bad_key = "ab" * 16
+    with pytest.raises(SystemExit) as excinfo:
+        ik("read", env={**env, "IK_AUTHOR_PRIVATE_KEY": bad_key})
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert "ik: error: IK_AUTHOR_PRIVATE_KEY is invalid" in err
+    assert bad_key not in err  # the key is never echoed back
 
 
 def test_archive_commands_need_an_archive_path(ik: Callable[..., None]) -> None:

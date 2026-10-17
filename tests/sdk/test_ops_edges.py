@@ -38,8 +38,12 @@ def test_create_edge_by_alias(root: Path, two_nodes: tuple[UUID, UUID]) -> None:
     item = _index(root).get("e3")
     assert (item.id, item.kind) == (edge_id, ItemKind.EDGE)
     body = item.body
+    assert (body["event_type"], body["body_type"]) == ("create_edge", "edge")
     assert (body["source_node"], body["target_node"]) == tuple(map(str, two_nodes))
-    assert (body["resource_type"], body["media_type"]) == ("managed", MediaType.TEXT_PLAIN.value)
+    assert (body["resource_type"], body["media_type"]) == (
+        "managed",
+        MediaType.TEXT_PLAIN.value,
+    )
     assert _index(root).store.blobs.get_text(body["blob_hash"]) == "implies"
 
 
@@ -84,7 +88,11 @@ def test_unknown_endpoints_write_nothing(
     blobs_before = _index(root).store.blobs.iter_hashes()
     with pytest.raises(UnknownItemError, match=message):
         edges.create_edge(
-            _index(root), AUTHOR, source or str(uuid7()), target or str(uuid7()), "dangling"
+            _index(root),
+            AUTHOR,
+            source or str(uuid7()),
+            target or str(uuid7()),
+            "dangling",
         )
     index = _index(root)
     assert index.store.base_count == 2
@@ -127,10 +135,14 @@ def test_supersede_edge_keeps_endpoints_title_and_alias(
 
 
 def test_supersede_edge_rejects_nodes(root: Path, two_nodes: tuple[UUID, UUID]) -> None:
-    with pytest.raises(UnknownItemError, match="does not reference a base-network edge"):
+    with pytest.raises(
+        UnknownItemError, match="does not reference a base-network edge"
+    ):
         edges.supersede_edge(_index(root), AUTHOR, "e1", "x")
 
 
 def test_supersede_edge_rejects_unknown_ids(root: Path) -> None:
-    with pytest.raises(UnknownItemError, match="Edge 'e1' does not exist in this archive"):
+    with pytest.raises(
+        UnknownItemError, match="Edge 'e1' does not exist in this archive"
+    ):
         edges.supersede_edge(_index(root), AUTHOR, "e1", "x")

@@ -117,7 +117,9 @@ def test_export_everything(root: Path, tmp_path: Path, tagged: None) -> None:
     assert graph is not None and graph.get("edgedefault") == "directed"
     assert len(graph.findall("g:node", NS)) == 3
     assert len(graph.findall("g:edge", NS)) == 1
-    labels = [d.text for d in graph.iter(f"{{{NS['g']}}}data") if d.get("key") == "node_label"]
+    labels = [
+        d.text for d in graph.iter(f"{{{NS['g']}}}data") if d.get("key") == "node_label"
+    ]
     # known quirk (EXPORT-SUPERSEDES): supersede events are ignored
     assert labels == ["a", "b", "c"]
 
@@ -144,7 +146,9 @@ def test_write_manifest(root: Path) -> None:
     assert path == root.resolve() / "MANIFEST.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["format_version"] == EVENT_FORMAT_VERSION
-    assert data["authors"] == [{"public_key": AUTHOR.public_key_hex, "algorithm": "Ed25519"}]
+    assert data["authors"] == [
+        {"public_key": AUTHOR.public_key_hex, "algorithm": "Ed25519"}
+    ]
     assert {"blob_store", "event_log", "schemas"} <= data.keys()
 
 
