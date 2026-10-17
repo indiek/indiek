@@ -19,7 +19,8 @@ Hash-chain verification and the verified view of an archive on disk."""
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Self
 
@@ -40,11 +41,16 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class ChainState:
     """Tip of a verified log: prefixed hash of its last event, its length,
-    and the signature algorithm of its last event (``None`` if empty)."""
+    and the signature algorithm of its last event (``None`` if empty).
+
+    ``hashes[i]`` is the hash of event ``i`` (0-based) under its own
+    ``hash_alg``; meta anchors are checked against the base ``hashes``.
+    """
 
     head: str | None
     count: int
     sig_alg: str | None = None
+    hashes: tuple[str, ...] = field(default=(), compare=False, repr=False)
 
 
 def _check_algorithms(event: dict[str, Any]) -> tuple[str, str]:
@@ -60,11 +66,11 @@ def _check_algorithms(event: dict[str, Any]) -> tuple[str, str]:
     checks = [("signature", event.get("signature"), sig_alg)]
     if header.get("prev_hash") is not None:
         checks.append(("prev_hash", header.get("prev_hash"), hash_alg))
-    for field, value, expected in checks:
+    for name, value, expected in checks:
         found = algorithm_of(value) if isinstance(value, str) else ""
         if found != expected:
             raise IntegrityError(
-                f"Algorithm mismatch: {field} uses {found or 'no'!r} prefix, "
+                f"Algorithm mismatch: {name} uses {found or 'no'!r} prefix, "
                 f"header says {expected!r}"
             )
     return hash_alg, sig_alg
@@ -84,20 +90,45 @@ def _check_transcription(body: dict[str, Any], hashes: list[str]) -> None:
         raise IntegrityError("Transcription does not match chain")
 
 
-def verify_chain(log: EventLog, blobs: BlobStore) -> ChainState:
+def _check_anchor(header: dict[str, Any], anchors: Sequence[str], floor: int) -> int:
+    """Check a meta event's ``base_seq`` / ``base_head``; return ``base_seq``."""
+    seq, head = header.get("base_seq"), header.get("base_head")
+    if (
+        not isinstance(seq, int)
+        or isinstance(seq, bool)
+        or not 0 <= seq <= len(anchors)
+    ):
+        raise IntegrityError("Meta anchor does not match base history")
+    if head != (anchors[seq - 1] if seq else None):
+        raise IntegrityError("Meta anchor does not match base history")
+    if seq < floor:
+        raise IntegrityError("Meta anchor goes back in base history")
+    return seq
+
+
+def verify_chain(
+    log: EventLog, blobs: BlobStore, anchors: Sequence[str] | None = None
+) -> ChainState:
     """Verify algorithms, chain links, signatures, referenced blobs and
     transcriptions of ``log``.
+
+    With ``anchors`` (the verified base ``hashes``), ``log`` is a meta log and
+    every event's ``base_seq`` / ``base_head`` must point into them, with
+    ``base_seq`` never decreasing.
 
     Raises:
         IntegrityError: ``"Unsupported format version …"``,
             ``"Unsupported algorithm …"``, ``"Algorithm mismatch …"``,
             ``"Chain broken!"``, ``"Data tampered or bad author!"``,
             ``"File corrupted or missing!"`` or
-            ``"Transcription does not match chain"``.
+            ``"Transcription does not match chain"``; for meta logs also
+            ``"Meta anchor does not match base history"`` or
+            ``"Meta anchor goes back in base history"``.
     """
     hashes: list[str] = []  # hashes[i]: event i under its own hash_alg
     previous: dict[str, Any] | None = None
     sig_alg: str | None = None
+    floor = 0  # highest base_seq seen so far (meta logs only)
     for event in log:
         version = event.get("header", {}).get("version")
         if version != EVENT_FORMAT_VERSION:
@@ -110,6 +141,8 @@ def verify_chain(log: EventLog, blobs: BlobStore) -> ChainState:
             raise IntegrityError("Chain broken!")
         if not verify_event(event):
             raise IntegrityError("Data tampered or bad author!")
+        if anchors is not None:
+            floor = _check_anchor(event["header"], anchors, floor)
         body = event.get("body", {})
         blob_hash = body.get("blob_hash")
         if blob_hash and not blobs.verify(blob_hash):
@@ -119,7 +152,10 @@ def verify_chain(log: EventLog, blobs: BlobStore) -> ChainState:
         hashes.append(event_hash(event, hash_alg))
         previous = event
     return ChainState(
-        head=hashes[-1] if hashes else None, count=len(hashes), sig_alg=sig_alg
+        head=hashes[-1] if hashes else None,
+        count=len(hashes),
+        sig_alg=sig_alg,
+        hashes=tuple(hashes),
     )
 
 
@@ -134,7 +170,7 @@ class ArchiveStore:
         self.meta_log = meta_log
         self.blobs = blobs
         self.base = verify_chain(base_log, blobs)
-        self.meta = verify_chain(meta_log, blobs)
+        self.meta = verify_chain(meta_log, blobs, anchors=self.base.hashes)
         logger.info("ARCHIVE INTEGRITY VERIFIED")
         logger.debug(
             "The archive has %d events and %d meta events",

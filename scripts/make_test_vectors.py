@@ -66,6 +66,11 @@ RULES = {
         "'sha256:' + lowercase hex SHA-256 of canonical_bytes(whole event, "
         "'signature' included); it is the next event's header.prev_hash"
     ),
+    "meta_anchor": (
+        "a meta event's header.base_seq counts the base events its author had "
+        "verified and header.base_head is the event_hash of base event number "
+        "base_seq (null iff 0); base_seq never decreases along the meta log"
+    ),
     "transcription": (
         "a transcription event attests its own log: verified_head must equal the "
         "event_hash of event number verified_count (1-based) of that log, and "
@@ -130,10 +135,16 @@ def build_vectors() -> list[dict[str, Any]]:
         ),
     )
     meta = _vector(
-        "meta genesis create_node_tag by a second author",
+        "meta genesis create_node_tag by a second author, anchored to base event 2",
         bob_seed,
         MetaEventModel(
-            header=MetaEventHeader(prev_hash=None, timestamp=TIMESTAMP, author=bob),
+            header=MetaEventHeader(
+                prev_hash=None,
+                timestamp=TIMESTAMP,
+                author=bob,
+                base_seq=2,
+                base_head=chained["event_hash"],
+            ),
             body=Tag(
                 node_id=UUID("019a0000-0000-7000-8000-000000000003"),
                 event_type=MetaEventType.CREATE_NODE_TAG,

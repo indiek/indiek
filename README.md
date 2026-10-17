@@ -139,7 +139,18 @@ Verification raises `IntegrityError` with one of these messages:
 - `Chain broken!` — a `header.prev_hash` does not match the canonical hash of the preceding event.
 - `Data tampered or bad author!` — the Ed25519 signature does not verify against `header.author`.
 - `File corrupted or missing!` — an event's `blob_hash` is absent from the blob store or its bytes hash to something else.
+- `Meta anchor does not match base history` — a meta event's anchor (see below) names a base event that does not exist or hashes to something else.
+- `Meta anchor goes back in base history` — a meta event's `base_seq` is lower than the previous meta event's.
 - `Transcription does not match chain` — a `transcription` event's `verified_head` is not the hash of event number `verified_count` of its log (see [`ik transcribe`](#ik-transcribe)).
+
+**Meta anchors.** Every meta event header records `base_seq`, the number of
+base events its author had verified, and `base_head`, the hash of base event
+number `base_seq` (`null` when `base_seq` is 0). The base log is verified
+first; if its author later rewrites or truncates it, the base alone still
+verifies but every meta event anchored past the change fails. The anchor is
+one-way: base events never mention the meta log, so an archive shipped
+without `meta/` is valid on its own, and anyone may annotate someone else's
+base with their own key.
 
 Building the index then raises `IntegrityError` if the logs are inconsistent:
 

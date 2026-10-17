@@ -19,6 +19,7 @@ from indiek.core.models import (
     EventHeader,
     EventModel,
     MediaType,
+    MetaEventHeader,
     MetaEdge,
     MetaEventBody,
     MetaEventModel,
@@ -46,6 +47,7 @@ class Builder:
         self.meta_log = EventLog(root / "meta" / "events")
         self._base_head: str | None = None
         self._meta_head: str | None = None
+        self.base_hashes: list[str] = []
 
     # -- raw appenders -----------------------------------------------------
 
@@ -58,11 +60,25 @@ class Builder:
         event.signature = sign_event(event, signer)
         self.base_log.append(event)
         self._base_head = event_hash(json.loads(event.model_dump_json()))
+        self.base_hashes.append(self._base_head)
 
-    def raw_meta(self, body: MetaEventBody, author: Author | None = None) -> None:
+    def raw_meta(
+        self,
+        body: MetaEventBody,
+        author: Author | None = None,
+        anchor: tuple[int, str | None] | None = None,
+    ) -> None:
+        """Append a meta event anchored to the base tip, or to ``anchor``
+        (``(base_seq, base_head)``) to craft deliberately wrong anchors."""
         signer = author or self.author
+        base_seq, base_head = anchor or (len(self.base_hashes), self._base_head)
         event = MetaEventModel(
-            header=EventHeader(prev_hash=self._meta_head, author=signer.public_key_hex),
+            header=MetaEventHeader(
+                prev_hash=self._meta_head,
+                author=signer.public_key_hex,
+                base_seq=base_seq,
+                base_head=base_head,
+            ),
             body=body,
         )
         event.signature = sign_event(event, signer)

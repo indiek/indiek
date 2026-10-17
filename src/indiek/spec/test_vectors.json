@@ -6,6 +6,7 @@
     "algorithms": "header.hash_alg and header.sig_alg name the event's algorithms (today 'sha256' and 'ed25519'); digests are written '<hash_alg>:<lowercase hex>' and signatures '<sig_alg>:<lowercase hex>'; the prev_hash and signature prefixes must equal the header's algorithms",
     "signature": "'ed25519:' + lowercase hex Ed25519 (RFC 8032) signature over canonical_bytes(event without its 'signature' field), no pre-hash",
     "event_hash": "'sha256:' + lowercase hex SHA-256 of canonical_bytes(whole event, 'signature' included); it is the next event's header.prev_hash",
+    "meta_anchor": "a meta event's header.base_seq counts the base events its author had verified and header.base_head is the event_hash of base event number base_seq (null iff 0); base_seq never decreases along the meta log",
     "transcription": "a transcription event attests its own log: verified_head must equal the event_hash of event number verified_count (1-based) of that log, and verified_count must be smaller than the transcription's own position",
     "strict_parsing": "a log line with duplicate keys, floats, NaN or Infinity is invalid"
   },
@@ -129,7 +130,7 @@
       "event_hash": "sha256:3e65db555da6ca994f0948112bb8bf50194d2929e3047a1586e6f8118e01183b"
     },
     {
-      "name": "meta genesis create_node_tag by a second author",
+      "name": "meta genesis create_node_tag by a second author, anchored to base event 2",
       "seed_hex": "0202020202020202020202020202020202020202020202020202020202020202",
       "public_key_hex": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
       "event_unsigned": {
@@ -139,7 +140,9 @@
           "sig_alg": "ed25519",
           "prev_hash": null,
           "timestamp": "2026-10-17T12:00:00Z",
-          "author": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+          "author": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
+          "base_head": "sha256:3e65db555da6ca994f0948112bb8bf50194d2929e3047a1586e6f8118e01183b",
+          "base_seq": 2
         },
         "body": {
           "event_type": "create_node_tag",
@@ -149,8 +152,8 @@
           "description": "A proven statement"
         }
       },
-      "signing_bytes_hex": "7b22626f6479223a7b22626f64795f74797065223a22746167222c226465736372697074696f6e223a22412070726f76656e2073746174656d656e74222c226576656e745f74797065223a226372656174655f6e6f64655f746167222c226e616d65223a227468c3a96f72c3a86d65222c226e6f64655f6964223a2230313961303030302d303030302d373030302d383030302d303030303030303030303033227d2c22686561646572223a7b22617574686f72223a2238313339373730656138376431373566353661333534363663333463376563636362386438613931623465653337613235646636306635623866633962333934222c22686173685f616c67223a22736861323536222c22707265765f68617368223a6e756c6c2c227369675f616c67223a2265643235353139222c2274696d657374616d70223a22323032362d31302d31375431323a30303a30305a222c2276657273696f6e223a22332e30227d7d",
-      "signature": "ed25519:f1ca4a794c5ebf221eb1aa47925e7f5c663d7c8eacfbff2998bb30b33b49ed2dcf6a7ede0d04dd7d18e7e1d60acf9282af9476492003786bf8316ff2fcd96002",
+      "signing_bytes_hex": "7b22626f6479223a7b22626f64795f74797065223a22746167222c226465736372697074696f6e223a22412070726f76656e2073746174656d656e74222c226576656e745f74797065223a226372656174655f6e6f64655f746167222c226e616d65223a227468c3a96f72c3a86d65222c226e6f64655f6964223a2230313961303030302d303030302d373030302d383030302d303030303030303030303033227d2c22686561646572223a7b22617574686f72223a2238313339373730656138376431373566353661333534363663333463376563636362386438613931623465653337613235646636306635623866633962333934222c22626173655f68656164223a227368613235363a33653635646235353564613663613939346630393438313132626238626635303139346432393239653330343761313538366536663831313865303131383362222c22626173655f736571223a322c22686173685f616c67223a22736861323536222c22707265765f68617368223a6e756c6c2c227369675f616c67223a2265643235353139222c2274696d657374616d70223a22323032362d31302d31375431323a30303a30305a222c2276657273696f6e223a22332e30227d7d",
+      "signature": "ed25519:6e05e3f43579e98f180cf85557d117d0e768e56fc1acd93844b690c3bf579033983bc56a98ef9833aabc6e823aae0bb90b0f20727d004cea4cb252ee7c8a670e",
       "event": {
         "header": {
           "version": "3.0",
@@ -158,7 +161,9 @@
           "sig_alg": "ed25519",
           "prev_hash": null,
           "timestamp": "2026-10-17T12:00:00Z",
-          "author": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+          "author": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
+          "base_head": "sha256:3e65db555da6ca994f0948112bb8bf50194d2929e3047a1586e6f8118e01183b",
+          "base_seq": 2
         },
         "body": {
           "event_type": "create_node_tag",
@@ -167,9 +172,9 @@
           "name": "théorème",
           "description": "A proven statement"
         },
-        "signature": "ed25519:f1ca4a794c5ebf221eb1aa47925e7f5c663d7c8eacfbff2998bb30b33b49ed2dcf6a7ede0d04dd7d18e7e1d60acf9282af9476492003786bf8316ff2fcd96002"
+        "signature": "ed25519:6e05e3f43579e98f180cf85557d117d0e768e56fc1acd93844b690c3bf579033983bc56a98ef9833aabc6e823aae0bb90b0f20727d004cea4cb252ee7c8a670e"
       },
-      "event_hash": "sha256:3a9e463a063ab7c34ac9d051b13efaab7fda13aef01d9c8f213bea3321a56ad7"
+      "event_hash": "sha256:ed43a744adc849adce7faf72ec1f4e2cdcc9cc10e3f2c61aa107ad7721291bcf"
     },
     {
       "name": "base transcription by a second author attesting the first two events",

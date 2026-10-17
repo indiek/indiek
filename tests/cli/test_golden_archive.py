@@ -3,10 +3,13 @@
 Builds one fixed scenario with deterministic UUIDv7s, timestamps and signing
 seed, then pins the base/meta head hashes and the blob set.  Any refactor that
 changes a single byte of the archive output makes this test fail.  The head
-constants were re-recorded for format 3.0 (CLIPYPI:FORMAT3-CANONICAL, 0.12.0)
-and again for prefixed digests/signatures and ``hash_alg``/``sig_alg`` headers
-(CLIPYPI:FORMAT3-ALG-AGILITY, 0.13.0); the blob set is unchanged since 0.10.0.  When modules move, update only the
-patch targets in ``_freeze``; change the constants only with a format change.
+constants were re-recorded for format 3.0 (CLIPYPI:FORMAT3-CANONICAL, 0.12.0),
+again for prefixed digests/signatures and ``hash_alg``/``sig_alg`` headers
+(CLIPYPI:FORMAT3-ALG-AGILITY, 0.13.0), and the meta head once more for the
+base anchors of meta headers (CLIPYPI:META-ANCHORS, 0.14.0; base head
+unchanged).  The blob set is unchanged since 0.10.0.  When modules move,
+update only the patch targets in ``_freeze``; change the constants only with a
+format change.
 
 The seed below is a public test vector, not a secret.
 """
@@ -33,7 +36,7 @@ EXPECTED_BASE_HEAD = (
     "sha256:df23ca9e5c1a766231159ba408c3d30372c4ad7646f90f5b81bde10b11aafdb8"
 )
 EXPECTED_META_HEAD = (
-    "sha256:2cf2186b35283352a5f1f97b9bcc9d87ba1a4aa9d7fd264691da12406fa4f6d1"
+    "sha256:7c7877233795dddeb2100d8646546ffd2e35176acafcae2985afb7669185bd10"
 )
 EXPECTED_BLOBS: list[str] = [
     "71a0b54b349d9f8a95d6bb621386c3cb939b0a711dbf4e746e3031c38b4104f5",

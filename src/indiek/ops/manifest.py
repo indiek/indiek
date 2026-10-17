@@ -93,6 +93,34 @@ _EVENT_HEADER_SCHEMA: Dict[str, Any] = {
     },
 }
 
+_META_EVENT_HEADER_SCHEMA: Dict[str, Any] = {
+    "description": (
+        "Header of every meta event: all EventHeader fields plus the base "
+        "anchor.  Meta commits to base; base never commits to meta, so the base "
+        "log stays valid and shippable on its own."
+    ),
+    "extends": "EventHeader",
+    "fields": {
+        "base_seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": (
+                "Number of base events the author had verified when writing this "
+                "meta event.  MUST NOT exceed the number of base events, and MUST "
+                "NOT decrease along the meta log."
+            ),
+        },
+        "base_head": {
+            "type": "string | null",
+            "pattern": "^<hash_alg>:<hex>$",
+            "description": (
+                "Hash (under that event's own hash_alg) of base event number "
+                "base_seq (1-based); null exactly when base_seq is 0."
+            ),
+        },
+    },
+}
+
 _EVENT_BODY_SCHEMA: Dict[str, Any] = {
     "description": (
         "Body of a base-network event.  Exactly one of the body types below "
@@ -352,7 +380,7 @@ _EVENT_MODEL_SCHEMA: Dict[str, Any] = {
 _META_EVENT_MODEL_SCHEMA: Dict[str, Any] = {
     "description": "Top-level structure of every NDJSON line in the meta event log.",
     "fields": {
-        "header": {"$ref": "EventHeader"},
+        "header": {"$ref": "MetaEventHeader"},
         "body": {"$ref": "MetaEventBody"},
         "signature": {"$ref": "EventModel.signature"},
     },
@@ -424,6 +452,14 @@ _EVENT_LOG_LAYOUT: Dict[str, Any] = {
         ),
         "signature_encoding": "'ed25519:' followed by 128 lowercase hex characters",
     },
+    "meta_anchors": (
+        "Verify the base log first, keeping the hash of every base event.  Then "
+        "every meta event's (base_seq, base_head) must name a base event that "
+        "exists with exactly that hash (base_seq 0 with base_head null for an "
+        "empty view), and base_seq must not decrease along the meta log.  A "
+        "rewritten or truncated base therefore invalidates every meta event "
+        "anchored past the change."
+    ),
     "algorithm_agility": (
         "Every digest is written '<hash_alg>:<lowercase hex>' and every signature "
         "'<sig_alg>:<lowercase hex>'.  Each event names its algorithms in "
@@ -504,6 +540,7 @@ def write_manifest(
         "event_log": _EVENT_LOG_LAYOUT,
         "schemas": {
             "EventHeader": _EVENT_HEADER_SCHEMA,
+            "MetaEventHeader": _META_EVENT_HEADER_SCHEMA,
             "EventBody": _EVENT_BODY_SCHEMA,
             "MetaEventBody": _META_EVENT_BODY_SCHEMA,
             "TranscriptionBody": _TRANSCRIPTION_BODY_SCHEMA,

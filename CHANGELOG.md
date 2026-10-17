@@ -4,6 +4,22 @@ All notable changes to the `indiek` package are documented here.
 
 ## Unreleased
 
+## 0.14.0 - 2026-10-17
+
+### Breaking
+- (META-ANCHORS) Meta commits to base, base never commits to meta (seal.md A). Every meta event header now requires `base_seq` (number of base events the author had verified) and `base_head` (hash of base event number `base_seq`; `null` exactly when `base_seq` is 0). Meta logs written by 0.13.0 no longer open.
+- (META-ANCHORS) Verification checks every meta anchor against the verified base: `IntegrityError("Meta anchor does not match base history")` when the base has fewer than `base_seq` events or event `base_seq` hashes to something else (catches a rewritten or truncated base that still verifies on its own); `IntegrityError("Meta anchor goes back in base history")` when `base_seq` decreases along the meta log (owner decision D7, to revisit with multi-writer collaboration).
+
+### Added
+- (META-ANCHORS) `indiek.core.models.MetaEventHeader` is its own class (was an alias of `EventHeader`) with an anchor-consistency validator; `append_meta` fills the anchor from the verified store, so SDK and CLI writes need no change.
+- (META-ANCHORS) `verify_chain(log, blobs, anchors=None)`; `ChainState.hashes` (per-event hashes, excluded from equality); `ArchiveStore` verifies base first, then meta against the base hashes.
+- (META-ANCHORS) `MANIFEST.json`: `MetaEventHeader` schema (referenced by `MetaEventModel`) and `event_log.meta_anchors` rule.
+- (META-ANCHORS) Tests: `tests/sdk/test_meta_anchors.py` (14); `tests/sdk/_builders.py` tracks base hashes and can craft anchors. Suite: 272 passed.
+
+### Changed
+- (META-ANCHORS) `src/indiek/spec/test_vectors.json` regenerated: the meta vector anchors to base vector 2; new rule `meta_anchor`.
+- (META-ANCHORS) `tests/cli/test_golden_archive.py` meta head re-recorded (base head and blob set unchanged).
+
 ## 0.13.0 - 2026-10-17
 
 ### Breaking

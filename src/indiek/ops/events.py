@@ -61,13 +61,16 @@ def append_base(index: ArchiveIndex, author: Author, body: BaseBody) -> EventMod
 
 
 def append_meta(index: ArchiveIndex, author: Author, body: MetaBody) -> MetaEventModel:
-    """Sign ``body`` and append it to the meta log, chained onto its head."""
+    """Sign ``body`` and append it to the meta log, chained onto its head and
+    anchored to the verified base tip (``base_seq`` / ``base_head``)."""
     store = index.store
     event = MetaEventModel(
         header=MetaEventHeader(
             version=EVENT_FORMAT_VERSION,
             prev_hash=store.meta_head if store.meta_count else None,
             author=author.public_key_hex,
+            base_head=store.base_head,
+            base_seq=store.base_count,
         ),
         body=body,
     )

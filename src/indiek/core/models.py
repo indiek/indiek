@@ -99,7 +99,24 @@ class EventHeader(BaseModel):
     author: PublicKeyHexStr
 
 
-MetaEventHeader = EventHeader
+class MetaEventHeader(EventHeader):
+    """Header of a meta event: :class:`EventHeader` plus the base anchor.
+
+    ``base_seq`` is the number of base events the author had verified when
+    writing the meta event, ``base_head`` the hash of base event number
+    ``base_seq`` (``None`` exactly when ``base_seq`` is 0).  Meta commits to
+    base; base never commits to meta.
+    """
+
+    base_head: DigestStr | None
+    base_seq: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def anchor_is_consistent(self) -> "MetaEventHeader":
+        """``base_head`` is null exactly when ``base_seq`` is 0."""
+        if (self.base_seq == 0) != (self.base_head is None):
+            raise ValueError("base_head must be null exactly when base_seq is 0")
+        return self
 
 
 class MetaEventBody(BaseModel, ABC):
