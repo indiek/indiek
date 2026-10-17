@@ -253,3 +253,74 @@ def test_transcribe_rejects_an_unknown_network(run_cli: Callable[..., None]) -> 
     with pytest.raises(SystemExit) as excinfo:
         run_cli("transcribe", "--network", "other")
     assert excinfo.value.code == 2
+
+
+# --- seal / verify ----------------------------------------------------------------
+
+
+def _seal_hash(out: str) -> str:
+    line = next(line for line in out.splitlines() if line.startswith("Seal "))
+    return line.rsplit(" ", 1)[-1]
+
+
+def test_seal_prints_the_seal_hash(
+    run_cli: Callable[..., None], capsys: pytest.CaptureFixture[str]
+) -> None:
+    run_cli("create_node", "--content", "n")
+    capsys.readouterr()
+    run_cli("seal")
+    out = capsys.readouterr().out
+    assert out.startswith("Seal 1 created: sha256:")
+    assert len(_seal_hash(out)) == len("sha256:") + 64
+
+
+def test_seal_refuses_an_empty_or_unchanged_archive(
+    run_cli: Callable[..., None], capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        run_cli("seal")
+    assert excinfo.value.code == 1
+    assert "Nothing to seal: the archive is empty" in capsys.readouterr().err
+    run_cli("create_node", "--content", "n")
+    run_cli("seal")
+    with pytest.raises(SystemExit):
+        run_cli("seal")
+    assert "unchanged since seal 1" in capsys.readouterr().err
+
+
+def test_verify_reports_counts_and_latest_seal(
+    run_cli: Callable[..., None], capsys: pytest.CaptureFixture[str]
+) -> None:
+    run_cli("create_node", "--content", "n")
+    run_cli("create_node_tag", "--name", "t", "--description", "d")
+    run_cli("seal")
+    seal_hash = _seal_hash(capsys.readouterr().out)
+    run_cli("verify")
+    assert capsys.readouterr().out.splitlines() == [
+        "Archive verified: 1 base events, 1 meta events, 1 seals",
+        f"Latest seal: {seal_hash}",
+    ]
+    run_cli("verify", "--expect", seal_hash)
+    assert "Expected seal found: seal 1 of 1" in capsys.readouterr().out
+
+
+def test_verify_without_seals(
+    run_cli: Callable[..., None], capsys: pytest.CaptureFixture[str]
+) -> None:
+    run_cli("create_node", "--content", "n")
+    capsys.readouterr()
+    run_cli("verify")
+    assert capsys.readouterr().out.strip() == (
+        "Archive verified: 1 base events, 0 meta events, 0 seals"
+    )
+
+
+def test_verify_expect_unknown_seal_fails(
+    run_cli: Callable[..., None], capsys: pytest.CaptureFixture[str]
+) -> None:
+    run_cli("create_node", "--content", "n")
+    run_cli("seal")
+    with pytest.raises(SystemExit) as excinfo:
+        run_cli("verify", "--expect", "sha256:" + "00" * 32)
+    assert excinfo.value.code == 1
+    assert "ik: error: Expected seal not found in seal log" in capsys.readouterr().err

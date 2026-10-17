@@ -149,7 +149,9 @@ def test_write_manifest(root: Path) -> None:
     assert data["authors"] == [
         {"public_key": AUTHOR.public_key_hex, "algorithm": "Ed25519"}
     ]
-    assert {"blob_store", "event_log", "schemas"} <= data.keys()
+    assert {"blob_store", "event_log", "seal_log", "schemas"} <= data.keys()
+    assert {"Seal", "LogTip", "MetaEventHeader"} <= data["schemas"].keys()
+    assert "RFC 6962" in data["seal_log"]["blob_root"]
 
 
 def test_manifest_holds_no_event_data(root: Path) -> None:

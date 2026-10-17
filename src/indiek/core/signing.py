@@ -43,34 +43,35 @@ from indiek.core.canonical import (
 from indiek.core.errors import IntegrityError
 
 
-def signing_bytes(event: Mapping[str, Any] | BaseModel) -> bytes:
-    """The bytes an event's signature covers: the event without ``signature``."""
-    unsigned = json_ready(event)
-    unsigned.pop("signature", None)
+def signing_bytes(
+    obj: Mapping[str, Any] | BaseModel, signature_field: str = "signature"
+) -> bytes:
+    """The bytes a signature covers: ``obj`` without its signature field."""
+    unsigned = json_ready(obj)
+    unsigned.pop(signature_field, None)
     return canonical_bytes(unsigned)
 
 
-def sign_event(event: Mapping[str, Any] | BaseModel, author: Author) -> str:
-    """Sign ``event`` (any ``signature`` field is ignored).
+def sign_object(
+    obj: Mapping[str, Any] | BaseModel, author: Author, signature_field: str
+) -> str:
+    """Sign ``obj`` minus ``signature_field``; return ``ed25519:<hex>``."""
+    return f"{DEFAULT_SIG_ALG}:{author.sign(signing_bytes(obj, signature_field)).hex()}"
 
-    Returns the prefixed signature ``ed25519:<hex>``.
-    """
-    return f"{DEFAULT_SIG_ALG}:{author.sign(signing_bytes(event)).hex()}"
 
-
-def verify_event(event: Mapping[str, Any]) -> bool:
-    """Whether ``event["signature"]`` is ``header.author``'s signature of ``event``.
-
-    Malformed keys, signatures or events verify as ``False`` rather than raising.
-    """
+def verify_object(
+    obj: Mapping[str, Any], public_key_hex: object, signature_field: str
+) -> bool:
+    """Whether ``obj[signature_field]`` is ``public_key_hex``'s signature of
+    ``obj`` minus that field.  Malformed input verifies as ``False``."""
     try:
-        sig_alg, signature = parse_signature(event["signature"])
-        if sig_alg != DEFAULT_SIG_ALG:
+        sig_alg, signature = parse_signature(obj[signature_field])
+        if sig_alg != DEFAULT_SIG_ALG or not isinstance(public_key_hex, str):
             return False
         verify_key = nacl.signing.VerifyKey(
-            event["header"]["author"], encoder=nacl.encoding.HexEncoder
+            public_key_hex, encoder=nacl.encoding.HexEncoder
         )
-        verify_key.verify(signing_bytes(event), signature)
+        verify_key.verify(signing_bytes(obj, signature_field), signature)
     except (
         nacl.exceptions.BadSignatureError,
         IntegrityError,
@@ -80,3 +81,21 @@ def verify_event(event: Mapping[str, Any]) -> bool:
     ):
         return False
     return True
+
+
+def sign_event(event: Mapping[str, Any] | BaseModel, author: Author) -> str:
+    """Sign ``event`` (any ``signature`` field is ignored).
+
+    Returns the prefixed signature ``ed25519:<hex>``.
+    """
+    return sign_object(event, author, "signature")
+
+
+def verify_event(event: Mapping[str, Any]) -> bool:
+    """Whether ``event["signature"]`` is ``header.author``'s signature of ``event``.
+
+    Malformed keys, signatures or events verify as ``False`` rather than raising.
+    """
+    header = event.get("header")
+    author = header.get("author") if isinstance(header, Mapping) else None
+    return verify_object(event, author, "signature")

@@ -4,6 +4,25 @@ All notable changes to the `indiek` package are documented here.
 
 ## Unreleased
 
+## 0.15.0 - 2026-10-17
+
+### Added
+- (SEAL-LOG) Seal log `seals/seals.ndjson` (seal.md B): each line is a signed checkpoint `{type: "seal", version, seq, prev_seal_hash, base: {head, count}, meta: {head, count}, blob_root, time, hash_alg, sig_alg, key, sig}`. `sig` = `ed25519:<hex>` over the canonical bytes minus `sig`; seal hash = `sha256:<hex>` of the whole seal, the one string committing to the archive.
+- (SEAL-LOG) `blob_root` = RFC 6962 Merkle Tree Hash (SHA-256; leaf `0x00 || raw 32-byte digest`, node `0x01 || left || right`, empty = `SHA-256("")`) over the sorted blobs **referenced by the events the seal covers** (owner decision 2026-10-17, option C). New `indiek.core.merkle.blob_root`.
+- (SEAL-LOG) `Archive.seal() -> indiek.Seal`, `Archive.seals()`, `Archive.verify(expect=None)` (raises `IntegrityError("Expected seal not found in seal log")`), `Archive.unreferenced_blobs()`; `ik seal` (prints `Seal <n> created: <hash>`) and `ik verify [--expect HASH]` (prints counts and the latest seal).
+- (SEAL-LOG) `indiek.core.seals` (`Seal`, `SealChain`, `verify_seals`), `indiek.core.storage.SealLog`, `indiek.core.models.SealModel` / `LogTip`, `indiek.core.signing.sign_object` / `verify_object` (events now use them), `ChainState.blobs`, `ArchiveStore.seals` / `referenced_blobs` / `unreferenced_blobs`, `indiek.ops.seal`.
+- (SEAL-LOG) MANIFEST `seal_log` section (signing, chain, tips, exact `blob_root` rule, unreferenced-blob policy) and `Seal` / `LogTip` schemas. Test vectors: `merkle_vectors` (0, 1, 2, 3, 5 leaves), `seal_vectors`, rules `blob_root` and `seal`.
+- (SEAL-LOG) README: "Seals and the blob store" section, `ik seal` and `ik verify` sections, walkthrough ends with `ik seal` / `ik verify`.
+- (SEAL-LOG) Tests: `tests/sdk/test_merkle.py` (24, against an independent RFC 6962 reference), `tests/sdk/test_seal_log.py` (31), 6 CLI seal/verify tests. Suite: 333 passed.
+
+### Breaking
+- (SEAL-LOG) Opening an archive also verifies every seal: `IntegrityError("Seal chain broken!")` (link, `seq`, signature or shape), `("Seal does not match logs!")` (tip absent from the verified logs, e.g. a rewritten or truncated log or a missing `meta/`), `("Seal goes back in log history")` (owner decision D10: counts never decrease), `("Blob set does not match seal!")`, plus the `Unsupported algorithm` / `Algorithm mismatch` checks shared with events.
+- (SEAL-LOG) `seal()` / `ik seal` refuse (`ArchiveRuleError`) an empty archive, an archive unchanged since the latest seal (owner decision D11; any key may seal), and an archive holding unreferenced blobs (option C; the error lists the files to delete).
+
+### Changed
+- (SEAL-LOG) Unreferenced blobs (files under `blobs/sha256/` no event references) are now reported with a WARNING on every open; they never fail verification. Seals of an empty archive and repeated seals only WARN on read (owner decision D11b).
+- (SEAL-LOG) `tests/cli/test_golden_archive.py` ends with `ik seal` and pins the seal hash; base head, meta head and blob set unchanged.
+
 ## 0.14.0 - 2026-10-17
 
 ### Breaking

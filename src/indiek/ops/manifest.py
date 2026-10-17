@@ -472,6 +472,79 @@ _EVENT_LOG_LAYOUT: Dict[str, Any] = {
 }
 
 # ---------------------------------------------------------------------------
+# Seal log layout and schema
+# ---------------------------------------------------------------------------
+
+_SEAL_LOG_LAYOUT: Dict[str, Any] = {
+    "description": (
+        "Append-only log of signed checkpoints ('seals'), one JSON object per "
+        "line.  The hash of the latest seal is the one string that commits to "
+        "the whole archive: publish it, and check it with 'ik verify --expect'."
+    ),
+    "path": "<archive_root>/seals/seals.ndjson",
+    "file_format": "NDJSON, UTF-8, parsed with the same strict rules as event logs",
+    "signing": (
+        "sig = 'ed25519:<hex>' Ed25519 signature by 'key' over the canonical bytes "
+        "of the seal without its 'sig' field.  Seal hash = '<hash_alg>:<hex>' digest "
+        "of the canonical bytes of the whole seal (sig included)."
+    ),
+    "chain": (
+        "seq is the 1-based position of the seal; prev_seal_hash is the hash of "
+        "the previous seal, null for the first seal and only there."
+    ),
+    "tips": (
+        "base and meta are {head, count}: head MUST be the hash of event number "
+        "count of that verified log (null iff count is 0).  Counts MUST NOT "
+        "decrease along the seal log."
+    ),
+    "blob_root": (
+        "RFC 6962 Merkle Tree Hash, with SHA-256, over the ascending-sorted list "
+        "of distinct blob digests referenced (blob_hash) by the first base.count "
+        "base events and the first meta.count meta events.  Leaf = "
+        "SHA-256(0x00 || 32 raw digest bytes); inner node = SHA-256(0x01 || left "
+        "|| right), pairing level by level and promoting an odd last node "
+        "unchanged; no blobs = SHA-256 of the empty string.  Written "
+        "'sha256:<hex>'.  Every seal is checked."
+    ),
+    "unreferenced_blobs": (
+        "Files under blobs/sha256/ that no event references (an interrupted "
+        "write, or a file added by hand) are not covered by any seal.  Readers "
+        "SHOULD warn about them; writers MUST NOT seal while any exist.  They "
+        "are safe to delete."
+    ),
+    "warnings": (
+        "A seal of an empty archive, or a seal committing to the same tips and "
+        "blob_root as the previous seal, is valid but SHOULD be reported."
+    ),
+}
+
+_SEAL_SCHEMA: Dict[str, Any] = {
+    "description": "One line of seals/seals.ndjson.",
+    "fields": {
+        "type": {"const": "seal"},
+        "version": {"type": "string", "const": EVENT_FORMAT_VERSION},
+        "seq": {"type": "integer", "minimum": 1},
+        "prev_seal_hash": {"type": "string | null", "pattern": "^<hash_alg>:<hex>$"},
+        "base": {"$ref": "LogTip"},
+        "meta": {"$ref": "LogTip"},
+        "blob_root": {"type": "string", "pattern": "^sha256:<hex>$"},
+        "time": {"type": "string", "format": "ISO-8601 datetime with timezone"},
+        "hash_alg": {"type": "string", "enum": ["sha256"]},
+        "sig_alg": {"type": "string", "enum": ["ed25519"]},
+        "key": {"type": "string", "description": "64-hex Ed25519 public key"},
+        "sig": {"type": "string", "pattern": "^ed25519:<128 hex>$"},
+    },
+}
+
+_LOG_TIP_SCHEMA: Dict[str, Any] = {
+    "description": "Tip of an event log inside a seal.",
+    "fields": {
+        "head": {"type": "string | null", "pattern": "^<hash_alg>:<hex>$"},
+        "count": {"type": "integer", "minimum": 0},
+    },
+}
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -538,6 +611,7 @@ def write_manifest(
         "algorithms": algorithms or {"hash": [], "signature": []},
         "blob_store": _BLOB_STORE_LAYOUT,
         "event_log": _EVENT_LOG_LAYOUT,
+        "seal_log": _SEAL_LOG_LAYOUT,
         "schemas": {
             "EventHeader": _EVENT_HEADER_SCHEMA,
             "MetaEventHeader": _META_EVENT_HEADER_SCHEMA,
@@ -546,6 +620,8 @@ def write_manifest(
             "TranscriptionBody": _TRANSCRIPTION_BODY_SCHEMA,
             "EventModel": _EVENT_MODEL_SCHEMA,
             "MetaEventModel": _META_EVENT_MODEL_SCHEMA,
+            "Seal": _SEAL_SCHEMA,
+            "LogTip": _LOG_TIP_SCHEMA,
         },
     }
 

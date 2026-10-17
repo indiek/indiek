@@ -26,10 +26,20 @@ from uuid import UUID
 
 from indiek.core.archive import ArchiveStore
 from indiek.core.author import Author
-from indiek.core.errors import ArchiveRuleError, AuthorshipError
+from indiek.core.errors import ArchiveRuleError, AuthorshipError, IntegrityError
 from indiek.core.index import ArchiveIndex, Network
 from indiek.core.models import MediaType, ResourceType
-from indiek.ops import edges, export, ingest, manifest, nodes, tags, transcription
+from indiek.core.seals import Seal
+from indiek.ops import (
+    edges,
+    export,
+    ingest,
+    manifest,
+    nodes,
+    tags,
+    transcription,
+)
+from indiek.ops import seal as sealing
 from indiek.ops.ingest import IngestResult
 from indiek.ops.tags import TagKind
 
@@ -206,6 +216,55 @@ class Archive:
         new_head = transcription.transcribe(self._index, self._writer(), network, note)
         self.refresh()
         return new_head
+
+    # -- seals ---------------------------------------------------------------
+
+    def seal(self) -> Seal:
+        """Re-verify the archive, then append a signed seal of both logs and
+        the blob store.  ``Seal.hash`` is the one string committing to it all.
+
+        Any author may seal.
+
+        Raises:
+            ArchiveRuleError: the archive is empty, unchanged since the latest
+                seal, or its blob store holds unreferenced files (see
+                :meth:`unreferenced_blobs`; delete them first).
+        """
+        author = self._writer()
+        self.refresh()
+        new_seal = sealing.seal(self._index, author)
+        self.refresh()
+        return new_seal
+
+    def unreferenced_blobs(self) -> list[Path]:
+        """Files in the blob store that no event references (crash leftovers or
+        hand-added files).  They are reported as a WARNING on open, block
+        :meth:`seal`, and are safe to delete."""
+        store = self._index.store
+        return [store.blobs.path_for(name) for name in store.unreferenced_blobs]
+
+    def seals(self) -> list[Seal]:
+        """Every verified seal, oldest first."""
+        return list(self._index.store.seals.seals)
+
+    def verify(self, *, expect: str | None = None) -> Seal | None:
+        """Re-read and fully re-verify the archive from disk.
+
+        Returns the seal whose hash is ``expect`` or, without ``expect``, the
+        latest seal (``None`` if there is none).
+
+        Raises:
+            IntegrityError: the archive is invalid, or ``"Expected seal not
+                found in seal log"``.
+        """
+        self.refresh()
+        chain_ = self._index.store.seals
+        if expect is None:
+            return chain_.latest
+        for candidate in chain_.seals:
+            if candidate.hash == expect:
+                return candidate
+        raise IntegrityError("Expected seal not found in seal log")
 
     # -- bulk, export, documentation ----------------------------------------
 

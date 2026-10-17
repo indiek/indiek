@@ -36,6 +36,7 @@ from indiek.core.errors import (
 )
 from indiek.core.index import ArchiveIndex, IndexedItem, ItemKind, TranscriptionRecord
 from indiek.core.models import EventType, MediaType, MetaEventType, ResourceType
+from indiek.core.seals import Seal
 from indiek.ops.ingest import IngestResult
 from indiek.sdk import Archive
 
@@ -59,6 +60,7 @@ __all__ = [
     "MediaType",
     "MetaEventType",
     "ResourceType",
+    "Seal",
     "TranscriptionRecord",
     "UnknownItemError",
     "__version__",

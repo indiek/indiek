@@ -32,8 +32,9 @@ from indiek.core.canonical import (
 )
 from indiek.core.errors import IntegrityError
 from indiek.core.models import EVENT_FORMAT_VERSION, TRANSCRIPTION_EVENT
+from indiek.core.seals import SealChain, verify_seals
 from indiek.core.signing import verify_event
-from indiek.core.storage import BlobStore, EventLog
+from indiek.core.storage import BlobStore, EventLog, SealLog, strip_blob_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +46,14 @@ class ChainState:
 
     ``hashes[i]`` is the hash of event ``i`` (0-based) under its own
     ``hash_alg``; meta anchors are checked against the base ``hashes``.
+    ``blobs[i]`` is the bare hex blob digest event ``i`` references, if any.
     """
 
     head: str | None
     count: int
     sig_alg: str | None = None
     hashes: tuple[str, ...] = field(default=(), compare=False, repr=False)
+    blobs: tuple[str | None, ...] = field(default=(), compare=False, repr=False)
 
 
 def _check_algorithms(event: dict[str, Any]) -> tuple[str, str]:
@@ -126,6 +129,7 @@ def verify_chain(
             ``"Meta anchor goes back in base history"``.
     """
     hashes: list[str] = []  # hashes[i]: event i under its own hash_alg
+    event_blobs: list[str | None] = []
     previous: dict[str, Any] | None = None
     sig_alg: str | None = None
     floor = 0  # highest base_seq seen so far (meta logs only)
@@ -150,27 +154,45 @@ def verify_chain(
         if body.get("event_type") == TRANSCRIPTION_EVENT:
             _check_transcription(body, hashes)
         hashes.append(event_hash(event, hash_alg))
+        event_blobs.append(strip_blob_prefix(blob_hash) if blob_hash else None)
         previous = event
     return ChainState(
         head=hashes[-1] if hashes else None,
         count=len(hashes),
         sig_alg=sig_alg,
         hashes=tuple(hashes),
+        blobs=tuple(event_blobs),
     )
 
 
 class ArchiveStore:
-    """The base log, meta log and blob store of one archive, verified on open."""
+    """The base log, meta log, seal log and blob store of one archive,
+    verified on open (base, then meta against base, then seals)."""
 
     def __init__(
-        self, root: Path, base_log: EventLog, meta_log: EventLog, blobs: BlobStore
+        self,
+        root: Path,
+        base_log: EventLog,
+        meta_log: EventLog,
+        blobs: BlobStore,
+        seal_log: SealLog | None = None,
     ) -> None:
         self.root = root
         self.base_log = base_log
         self.meta_log = meta_log
         self.blobs = blobs
+        self.seal_log = seal_log or SealLog(root / "seals")
         self.base = verify_chain(base_log, blobs)
         self.meta = verify_chain(meta_log, blobs, anchors=self.base.hashes)
+        self.seals: SealChain = verify_seals(self.seal_log, self.base, self.meta)
+        if self.unreferenced_blobs:
+            logger.warning(
+                "%d unreferenced blob(s) in %s (no event uses them; delete them "
+                "before sealing): %s",
+                len(self.unreferenced_blobs),
+                blobs.path,
+                ", ".join(self.unreferenced_blobs),
+            )
         logger.info("ARCHIVE INTEGRITY VERIFIED")
         logger.debug(
             "The archive has %d events and %d meta events",
@@ -191,7 +213,20 @@ class ArchiveStore:
 
     def reopen(self) -> Self:
         """Re-read and re-verify the same archive (after writes)."""
-        return type(self)(self.root, self.base_log, self.meta_log, self.blobs)
+        return type(self)(
+            self.root, self.base_log, self.meta_log, self.blobs, self.seal_log
+        )
+
+    @property
+    def referenced_blobs(self) -> frozenset[str]:
+        """Bare hex digests of every blob some base or meta event references."""
+        return frozenset(b for b in (*self.base.blobs, *self.meta.blobs) if b)
+
+    @property
+    def unreferenced_blobs(self) -> list[str]:
+        """Sorted names of files in the blob store that no event references."""
+        referenced = self.referenced_blobs
+        return [name for name in self.blobs.iter_hashes() if name not in referenced]
 
     @property
     def base_head(self) -> str | None:

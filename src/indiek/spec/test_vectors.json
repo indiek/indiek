@@ -7,6 +7,8 @@
     "signature": "'ed25519:' + lowercase hex Ed25519 (RFC 8032) signature over canonical_bytes(event without its 'signature' field), no pre-hash",
     "event_hash": "'sha256:' + lowercase hex SHA-256 of canonical_bytes(whole event, 'signature' included); it is the next event's header.prev_hash",
     "meta_anchor": "a meta event's header.base_seq counts the base events its author had verified and header.base_head is the event_hash of base event number base_seq (null iff 0); base_seq never decreases along the meta log",
+    "blob_root": "RFC 6962 Merkle Tree Hash (SHA-256) over the ascending-sorted distinct blob digests referenced by the events a seal covers: leaf = SHA-256(0x00 || raw 32-byte digest), node = SHA-256(0x01 || left || right), no blobs = SHA-256(''); written 'sha256:<hex>'",
+    "seal": "sig = 'ed25519:' + Ed25519 over canonical_bytes(seal without 'sig'); seal hash = 'sha256:' + SHA-256 of canonical_bytes(whole seal)",
     "transcription": "a transcription event attests its own log: verified_head must equal the event_hash of event number verified_count (1-based) of that log, and verified_count must be smaller than the transcription's own position",
     "strict_parsing": "a log line with duplicate keys, floats, NaN or Infinity is invalid"
   },
@@ -224,6 +226,92 @@
         "signature": "ed25519:42a3f08c963ae5582469cb33cfb9c839d1672a3984f040df37b17e60e16365c50ffa499a2b91dff0848cbc3f6f3fbb29674192ff3d7a946fe6a916a1687f2002"
       },
       "event_hash": "sha256:e19ed57fb0b95341a097914dac7b1788e5e0d6a04d7c9e7dd988ecb4ece52860"
+    }
+  ],
+  "merkle_vectors": [
+    {
+      "leaves": [],
+      "root": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "leaves": [
+        "a32b217ef17069c89f5f22c5a0b1b0f1292375d7304acc3f5d8a6ecc7e0c7208"
+      ],
+      "root": "sha256:dad7777a219cbda19ae44a2f819b6690d81b30928db1ab99e9ea79a7272c11d1"
+    },
+    {
+      "leaves": [
+        "8ea720af7d06fc784e8a1e71cf77659b56e75cbed34969abb290689af960c86d",
+        "a32b217ef17069c89f5f22c5a0b1b0f1292375d7304acc3f5d8a6ecc7e0c7208"
+      ],
+      "root": "sha256:77381fcf392e0100025a0b6c5c9a84fc22dd4ba57896b64b9b72ad57981f2272"
+    },
+    {
+      "leaves": [
+        "8ea720af7d06fc784e8a1e71cf77659b56e75cbed34969abb290689af960c86d",
+        "974b8f4f45ebf7114bdbcb2e9132662134d46b6fe433660b7b2e93ce096b269a",
+        "a32b217ef17069c89f5f22c5a0b1b0f1292375d7304acc3f5d8a6ecc7e0c7208"
+      ],
+      "root": "sha256:5e33f5d7dbc56fcd0637f1c42d8fe642ff0feae97b1fa1c9a22a3b4a4103a98c"
+    },
+    {
+      "leaves": [
+        "8ea720af7d06fc784e8a1e71cf77659b56e75cbed34969abb290689af960c86d",
+        "974b8f4f45ebf7114bdbcb2e9132662134d46b6fe433660b7b2e93ce096b269a",
+        "a32b217ef17069c89f5f22c5a0b1b0f1292375d7304acc3f5d8a6ecc7e0c7208",
+        "dc383e6cb34a818fc2f8469077cd5ff3589f0a548d2717c67d536a7dab6d5515",
+        "dfa4cb22d9ed2cdee3e52925d2fe3b537532082b36556f929aa1d188a34c2e43"
+      ],
+      "root": "sha256:1e0a946cf546472c86f0ec47a04fc165a5e2e4092af4a399b818a3eea9d1a614"
+    }
+  ],
+  "seal_vectors": [
+    {
+      "name": "first seal of the three base vectors and the meta vector",
+      "seed_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+      "public_key_hex": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+      "seal_unsigned": {
+        "type": "seal",
+        "version": "3.0",
+        "seq": 1,
+        "prev_seal_hash": null,
+        "base": {
+          "head": "sha256:e19ed57fb0b95341a097914dac7b1788e5e0d6a04d7c9e7dd988ecb4ece52860",
+          "count": 3
+        },
+        "meta": {
+          "head": "sha256:ed43a744adc849adce7faf72ec1f4e2cdcc9cc10e3f2c61aa107ad7721291bcf",
+          "count": 1
+        },
+        "blob_root": "sha256:e6dd6ee18b7b4127f457b4c23972d52c0b1348720de14b4e92fb70fab3c0a50b",
+        "time": "2026-10-17T12:00:00Z",
+        "hash_alg": "sha256",
+        "sig_alg": "ed25519",
+        "key": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+      },
+      "signing_bytes_hex": "7b2262617365223a7b22636f756e74223a332c2268656164223a227368613235363a65313965643537666230623935333431613039373931346461633762313738386535653064366130346437633965376464393838656362346563653532383630227d2c22626c6f625f726f6f74223a227368613235363a65366464366565313862376234313237663435376234633233393732643532633062313334383732306465313462346539326662373066616233633061353062222c22686173685f616c67223a22736861323536222c226b6579223a2238613838653364643734303966313935666435326462326433636261356437326361363730396266316439343132316266333734383830316234306636663563222c226d657461223a7b22636f756e74223a312c2268656164223a227368613235363a65643433613734346164633834396164636537666166373265633166346532636463633963633130653366326336316161313037616437373231323931626366227d2c22707265765f7365616c5f68617368223a6e756c6c2c22736571223a312c227369675f616c67223a2265643235353139222c2274696d65223a22323032362d31302d31375431323a30303a30305a222c2274797065223a227365616c222c2276657273696f6e223a22332e30227d",
+      "sig": "ed25519:fa926d9c3ecbbb164ab3f00b0ca67bd3cbbdfd7042fe8dcd995747bca712e9933794ecff6ea4b68e4f9c647e08f2dcd62b4ff97b3de711753f4b87c02a07c505",
+      "seal": {
+        "type": "seal",
+        "version": "3.0",
+        "seq": 1,
+        "prev_seal_hash": null,
+        "base": {
+          "head": "sha256:e19ed57fb0b95341a097914dac7b1788e5e0d6a04d7c9e7dd988ecb4ece52860",
+          "count": 3
+        },
+        "meta": {
+          "head": "sha256:ed43a744adc849adce7faf72ec1f4e2cdcc9cc10e3f2c61aa107ad7721291bcf",
+          "count": 1
+        },
+        "blob_root": "sha256:e6dd6ee18b7b4127f457b4c23972d52c0b1348720de14b4e92fb70fab3c0a50b",
+        "time": "2026-10-17T12:00:00Z",
+        "hash_alg": "sha256",
+        "sig_alg": "ed25519",
+        "key": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+        "sig": "ed25519:fa926d9c3ecbbb164ab3f00b0ca67bd3cbbdfd7042fe8dcd995747bca712e9933794ecff6ea4b68e4f9c647e08f2dcd62b4ff97b3de711753f4b87c02a07c505"
+      },
+      "seal_hash": "sha256:c2214edc62b48483cb0437f15e14c23826f50702088bc31218a010255922c6d7"
     }
   ]
 }

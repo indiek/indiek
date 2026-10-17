@@ -206,6 +206,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="File defining edges to create.",
     )
 
+    subparsers.add_parser(
+        "seal",
+        help=(
+            "Append a signed seal of both logs and the blob store; prints the "
+            "seal hash, the one string that commits to the whole archive."
+        ),
+    )
+    verify_parser = subparsers.add_parser(
+        "verify", help="Fully re-verify the archive, its seals and its blob set."
+    )
+    verify_parser.add_argument(
+        "--expect",
+        default=None,
+        metavar="HASH",
+        help="Fail unless this seal hash is in the seal log.",
+    )
+
     transcribe_parser = subparsers.add_parser(
         "transcribe",
         help=(
@@ -305,6 +322,20 @@ def _config(args: argparse.Namespace, archive_path: str | None) -> None:
         print(f"{ARCHIVE_PATH_VAR}={args.set_archive_path}")
 
 
+def _verify(ik: Archive, expect: str | None) -> None:
+    found = ik.verify(expect=expect)
+    store = ik.index.store
+    print(
+        f"Archive verified: {store.base.count} base events, "
+        f"{store.meta.count} meta events, {store.seals.count} seals"
+    )
+    latest = store.seals.latest
+    if expect is not None and found is not None:
+        print(f"Expected seal found: seal {found.seq} of {store.seals.count}")
+    if latest is not None:
+        print(f"Latest seal: {latest.hash}")
+
+
 def _fail(message: str) -> NoReturn:
     """Report a failed command on one stderr line and exit 1 (traceback at DEBUG)."""
     logger.debug("ik failed", exc_info=True)
@@ -373,6 +404,11 @@ def _run_archive_command(
             ik.export_graphml(args.output_path, args.tags)
         case "ingest":
             ik.ingest(input_folder=args.input_folder, edges_file=args.edges_def_file)
+        case "seal":
+            new_seal = ik.seal()
+            print(f"Seal {new_seal.seq} created: {new_seal.hash}")
+        case "verify":
+            _verify(ik, args.expect)
         case "transcribe":
             new_head = ik.transcribe(args.network, note=args.note)
             print(f"Transcription appended: {new_head}")

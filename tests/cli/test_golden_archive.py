@@ -7,7 +7,8 @@ constants were re-recorded for format 3.0 (CLIPYPI:FORMAT3-CANONICAL, 0.12.0),
 again for prefixed digests/signatures and ``hash_alg``/``sig_alg`` headers
 (CLIPYPI:FORMAT3-ALG-AGILITY, 0.13.0), and the meta head once more for the
 base anchors of meta headers (CLIPYPI:META-ANCHORS, 0.14.0; base head
-unchanged).  The blob set is unchanged since 0.10.0.  When modules move,
+unchanged).  The scenario ends with ``ik seal`` since CLIPYPI:SEAL-LOG
+(0.15.0), pinning the seal bytes too.  The blob set is unchanged since 0.10.0.  When modules move,
 update only the patch targets in ``_freeze``; change the constants only with a
 format change.
 
@@ -37,6 +38,9 @@ EXPECTED_BASE_HEAD = (
 )
 EXPECTED_META_HEAD = (
     "sha256:7c7877233795dddeb2100d8646546ffd2e35176acafcae2985afb7669185bd10"
+)
+EXPECTED_SEAL_HASH = (
+    "sha256:e1c0aa4631b1bbb4d995e5b1438bfc18245691a07447768533b45b568284e5f7"
 )
 EXPECTED_BLOBS: list[str] = [
     "71a0b54b349d9f8a95d6bb621386c3cb939b0a711dbf4e746e3031c38b4104f5",
@@ -109,14 +113,21 @@ def test_golden_archive_is_byte_stable(
         "create_node_tag", "--name", "theorem", "--description", "A proven statement"
     )  # m1
     ik("set_tag", "--tag", "m1", "--id", "e1")  # m2 representation, m3 meta edge
+    ik("seal")
 
     base_head = _head_hash(archive_root)
     meta_head = _head_hash(archive_root / "meta")
+    seal_line = (archive_root / "seals" / "seals.ndjson").read_text("utf-8")
+    seal = json.loads(seal_line.splitlines()[-1])
+    raw = json.dumps(seal, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    seal_hash = "sha256:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
     blobs = sorted(path.name for path in blob_paths())
     print(f"\nEXPECTED_BASE_HEAD = {base_head!r}")
     print(f"EXPECTED_META_HEAD = {meta_head!r}")
+    print(f"EXPECTED_SEAL_HASH = {seal_hash!r}")
     print(f"EXPECTED_BLOBS = {blobs!r}")
 
     assert base_head == EXPECTED_BASE_HEAD
     assert meta_head == EXPECTED_META_HEAD
+    assert seal_hash == EXPECTED_SEAL_HASH
     assert blobs == EXPECTED_BLOBS

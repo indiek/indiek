@@ -45,7 +45,7 @@ IndexedItem(id=UUID('01a14a3a-0b6a-76a3-a0e4-de4eeb1d3705'), alias='e7', kind=<I
 
 # `ik` CLI — API Reference
 
-Reference for all fourteen `ik` subcommands. The Python SDK behind them
+Reference for all sixteen `ik` subcommands. The Python SDK behind them
 (`import indiek`) is documented in the docstrings of `indiek.Archive`.
 
 | Command | Purpose | Prints on success |
@@ -64,6 +64,8 @@ Reference for all fourteen `ik` subcommands. The Python SDK behind them
 | `ingest` | Bulk-create nodes from a folder and edges from a file | nothing |
 | `manifest` | Write `MANIFEST.json` at the archive root | `MANIFEST written to: <path>` |
 | `transcribe` | Attest the verified base or meta log with a signed `transcription` event | `Transcription appended: <hash>` |
+| `seal` | Append a signed seal committing to both logs and their blobs | `Seal <n> created: <hash>` |
+| `verify` | Fully re-verify the archive, optionally requiring a known seal | counts and the latest seal hash |
 
 ## Install
 
@@ -126,7 +128,8 @@ Python SDK (`indiek.IndieKError` and subclasses); the CLI prints the same
 ### Integrity verification
 
 Every command that opens the archive (all but `config` and `keygen`) walks and
-verifies the whole event log **and** the whole meta event log before running. There is no way to skip verification.
+verifies the whole event log, the whole meta event log **and** the seal log
+before running. There is no way to skip verification.
 Every event names its algorithms in `header.hash_alg` (`sha256`) and
 `header.sig_alg` (`ed25519`). Hashes and signatures are written with the
 algorithm as a prefix: `prev_hash` and archive heads are `sha256:<hex>`,
@@ -142,6 +145,10 @@ Verification raises `IntegrityError` with one of these messages:
 - `Meta anchor does not match base history` — a meta event's anchor (see below) names a base event that does not exist or hashes to something else.
 - `Meta anchor goes back in base history` — a meta event's `base_seq` is lower than the previous meta event's.
 - `Transcription does not match chain` — a `transcription` event's `verified_head` is not the hash of event number `verified_count` of its log (see [`ik transcribe`](#ik-transcribe)).
+- `Seal chain broken!` — a seal's `seq` is not its position, its `prev_seal_hash` is not the hash of the previous seal (or the first seal is missing), its signature does not verify, or it is malformed.
+- `Seal does not match logs!` — a seal names a base or meta tip that is not in the verified log (the log was rewritten or truncated after the seal, or `meta/` is missing).
+- `Seal goes back in log history` — a seal's base or meta count is lower than the previous seal's.
+- `Blob set does not match seal!` — a seal's `blob_root` is not the Merkle root of the blobs referenced by the events it covers (see [Seals and the blob store](#seals-and-the-blob-store)).
 
 **Meta anchors.** Every meta event header records `base_seq`, the number of
 base events its author had verified, and `base_head`, the hash of base event
@@ -149,8 +156,8 @@ number `base_seq` (`null` when `base_seq` is 0). The base log is verified
 first; if its author later rewrites or truncates it, the base alone still
 verifies but every meta event anchored past the change fails. The anchor is
 one-way: base events never mention the meta log, so an archive shipped
-without `meta/` is valid on its own, and anyone may annotate someone else's
-base with their own key.
+without `meta/` is valid on its own (drop `seals/` too: seals commit to both
+logs), and anyone may annotate someone else's base with their own key.
 
 Building the index then raises `IntegrityError` if the logs are inconsistent:
 
@@ -162,6 +169,84 @@ Building the index then raises `IntegrityError` if the logs are inconsistent:
 
 A successful verification logs `ARCHIVE INTEGRITY VERIFIED` at `INFO`, on
 stderr (visible with `--logging-level info`).
+
+Some conditions are reported as a `WARNING` on stderr but do **not** fail
+verification: unreferenced blobs, a seal of an empty archive, and a seal that
+repeats the previous one (see below).
+
+### Seals and the blob store
+
+A **seal** is a signed snapshot of the whole archive, appended as one line to
+`seals/seals.ndjson`. It records:
+
+- the **base tip** and the **meta tip**: how many events each log had
+  (`count`) and the hash of the last of them (`head`);
+- `blob_root`: one hash summarising **every blob those events reference**
+  (an RFC 6962 Merkle root, the same construction as Certificate Transparency);
+- `seq` (1, 2, 3, …), `prev_seal_hash` (the previous seal's hash, so seals
+  form their own chain), `time`, the sealing `key` and its signature `sig`.
+
+The **seal hash** (`sha256:…`, printed by `ik seal`) is the one short string
+that commits to everything in the archive at that moment. Publish it (on a
+web page, in an email, in a printed book); anyone holding a copy of the
+archive can then check that copy against it with
+`ik verify --expect <seal hash>`. A seal cannot prove that it is the *latest*
+one: freshness always needs such an outside reference.
+
+**What is checked, every time the archive is opened.** Every seal, not only
+the latest, is checked exactly:
+
+1. it is the next link of the seal chain and its signature verifies;
+2. its base and meta tips exist, with those hashes, in the verified logs;
+3. its counts are not lower than the previous seal's;
+4. its `blob_root` equals the Merkle root recomputed from the blobs referenced
+   by the events it covers.
+
+Adding nodes, edges or tags after a seal is normal and keeps every existing
+seal valid: a seal only speaks about the events up to its own counts. Seal
+again whenever you want a new checkpoint.
+
+**Unreferenced blobs.** A blob is *unreferenced* when it sits under
+`blobs/sha256/` but no event points to it. Two things produce one:
+
+- an **interrupted write**: the program stopped after saving the file and
+  before recording the event that uses it (a crash, a killed process, a full
+  disk);
+- a file **added by hand**, or by another tool, possibly to smuggle content
+  into the archive.
+
+Unreferenced blobs are never part of the knowledge graph and no seal covers
+them. They are handled like git handles dangling objects:
+
+- **Opening the archive warns, it does not fail.** Every command logs, at
+  `WARNING` level on stderr,
+  `<n> unreferenced blob(s) in <blob dir> (no event uses them; delete them before sealing): <names>`,
+  and still runs (silence it with `--logging-level ERROR`). An interrupted write can therefore never make an
+  archive unusable, and a file slipped in after a seal is always reported.
+- **Sealing is refused while any exist**, with
+  `ArchiveRuleError: Cannot seal: <n> unreferenced blob(s) … Delete them and seal again: <paths>`.
+  A seal is a statement about the whole archive; refusing keeps it from
+  silently covering a file nobody accounted for.
+- **They are safe to delete**: no event and no seal depends on them. Delete
+  the paths listed in the warning or the error, or list them from Python with
+  `Archive.open(path).unreferenced_blobs()`. If you want to keep the content,
+  add it as a node instead (the blob is reused, not duplicated).
+
+What this does **not** relax: a blob that an event references is re-hashed on
+every open, and a missing or altered one still fails with
+`File corrupted or missing!`, seal or no seal.
+
+**Read-time warnings for unusual seals.** `ik seal` refuses to seal an empty
+archive and to seal an archive unchanged since the latest seal. A seal log
+written by other software may still contain such seals; they are valid, and
+opening the archive only logs, at `WARNING` level,
+`Seal <n> seals an empty archive` or
+`Seal <n> repeats seal <m> (the archive did not change)`.
+
+**Shipping parts of an archive.** `seals/` commits to the base and meta logs
+together: ship it only with both `events/` and `meta/`. Without `meta/`,
+the seals fail with `Seal does not match logs!`; drop `seals/` as well and the
+base verifies on its own.
 
 ## Identifiers
 
@@ -581,6 +666,52 @@ ik transcribe --network meta
 
 ---
 
+## `ik seal`
+
+Re-verifies the whole archive, then appends a signed seal of the base tip,
+the meta tip and the blobs they reference to `seals/seals.ndjson` (see
+[Seals and the blob store](#seals-and-the-blob-store)). No flags.
+
+- Prints `Seal <n> created: <hash>`. The hash is the string to publish.
+- Any key may seal; a key is required.
+- Refused (exit 1) when the archive is empty
+  (`Nothing to seal: the archive is empty`), unchanged since the latest seal
+  (`Nothing to seal: the archive is unchanged since seal <n>`), or holding
+  unreferenced blobs (`Cannot seal: <n> unreferenced blob(s) …`, with the
+  paths to delete).
+- SDK: `ik.seal()` returns an `indiek.Seal` (`hash`, `seq`, `prev_seal_hash`,
+  `base_head`, `base_count`, `meta_head`, `meta_count`, `blob_root`, `time`,
+  `key`); `ik.seals()` lists every verified seal, oldest first.
+
+```bash
+ik seal
+```
+
+---
+
+## `ik verify`
+
+Re-reads and fully re-verifies the archive: both event logs, every
+referenced blob, and every seal.
+
+| Flag | Required | Meaning |
+| --- | --- | --- |
+| `--expect` | no | A seal hash. Fails unless the seal log contains it. |
+
+- Prints `Archive verified: <n> base events, <m> meta events, <k> seals`,
+  then `Latest seal: <hash>` when there is one, and with `--expect`
+  `Expected seal found: seal <i> of <k>`.
+- Any integrity failure exits 1 with its `IntegrityError` message; an absent
+  expected seal exits 1 with `Expected seal not found in seal log`.
+- SDK: `ik.verify(expect=None)` returns the expected seal, or the latest one
+  (`None` without seals).
+
+```bash
+ik verify --expect "$PUBLISHED_SEAL_HASH"   # e.g. sha256:e1c0aa46…
+```
+
+---
+
 ## `ik config`
 
 Shows, and optionally sets, `IK_ARCHIVE_PATH` in the dotenv file given by
@@ -681,8 +812,10 @@ ik set_tag --tag m2 --id e8   # m5 = representation of e8, m6 = meta edge
 printf 'e9,e1,cites\n' > edges.csv
 ik ingest --input-folder ./more --edges-def-file edges.csv
 
-# 7. Inspect, export, document
+# 7. Inspect, export, document, seal
 ik read --mini
 ik export --output-path theorems.graphml --tags m1,m2
 ik manifest
+ik seal      # prints the seal hash to publish
+ik verify
 ```

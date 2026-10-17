@@ -21,6 +21,7 @@ Layout (relative to the archive root)::
     events/YYYY/MM/DD/events.ndjson        base event log
     meta/events/YYYY/MM/DD/events.ndjson   meta event log
     blobs/sha256/<hex[0:2]>/<hex[2:4]>/<sha256_hex>
+    seals/seals.ndjson                     seal log (one seal per line)
 
 A log is read by sorting every ``*ndjson`` path under its directory
 lexicographically, then reading each file top to bottom.  Lines are parsed
@@ -35,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from indiek.core.canonical import parse_line
-from indiek.core.models import EventModel, MetaEventModel
+from indiek.core.models import EventModel, MetaEventModel, SealModel
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,32 @@ class EventLog:
             handle.write(line + "\n")
         logger.debug("EVENT %s written to %s", line, file_path)
         return file_path
+
+
+class SealLog:
+    """The append-only seal log: a single NDJSON file ``<path>/seals.ndjson``."""
+
+    FILE_NAME = "seals.ndjson"
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self.file = self.path / self.FILE_NAME
+
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        if not self.file.is_file():
+            return
+        with open(self.file, "rt", encoding="utf-8") as handle:
+            for line in handle:
+                yield parse_line(line)
+
+    def append(self, seal: SealModel) -> Path:
+        """Append a signed seal as one line."""
+        self.path.mkdir(parents=True, exist_ok=True)
+        line = seal.model_dump_json()
+        with open(self.file, "a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+        logger.debug("SEAL %s written to %s", line, self.file)
+        return self.file
 
 
 class BlobStore:

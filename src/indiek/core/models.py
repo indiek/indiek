@@ -288,6 +288,44 @@ class Transcription(BaseModel):
     note: str | None = None
 
 
+class LogTip(BaseModel):
+    """Tip of an event log as recorded in a seal: hash of event number
+    ``count`` (``None`` exactly when ``count`` is 0)."""
+
+    head: DigestStr | None
+    count: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def tip_is_consistent(self) -> "LogTip":
+        if (self.count == 0) != (self.head is None):
+            raise ValueError("head must be null exactly when count is 0")
+        return self
+
+
+class SealModel(BaseModel):
+    """One line of ``seals/seals.ndjson``: a signed checkpoint of the whole
+    archive (base tip, meta tip, blob-store Merkle root).
+
+    ``sig`` covers the canonical bytes of the seal without ``sig``; the seal
+    hash is the digest of the whole seal (``sig`` included) and the next
+    seal's ``prev_seal_hash``.  Only the first seal has a null
+    ``prev_seal_hash``; ``seq`` is the seal's 1-based position.
+    """
+
+    type: Literal["seal"] = "seal"
+    version: str = EVENT_FORMAT_VERSION
+    seq: int = Field(ge=1)
+    prev_seal_hash: DigestStr | None
+    base: LogTip
+    meta: LogTip
+    blob_root: DigestStr
+    time: dt = Field(default_factory=lambda: dt.now(datetime.UTC))
+    hash_alg: str = DEFAULT_HASH_ALG
+    sig_alg: str = DEFAULT_SIG_ALG
+    key: PublicKeyHexStr
+    sig: str | None = None
+
+
 class EventModel(BaseModel):
     """A complete signed base-network log entry."""
 

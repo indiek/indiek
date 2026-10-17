@@ -21,7 +21,8 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from indiek.core.author import Author
-from indiek.core.canonical import canonical_bytes, event_hash
+from indiek.core.canonical import canonical_bytes, digest, event_hash
+from indiek.core.merkle import blob_root
 from indiek.core.models import (
     EVENT_FORMAT_VERSION,
     Edge,
@@ -31,11 +32,13 @@ from indiek.core.models import (
     MetaEventHeader,
     MetaEventModel,
     MetaEventType,
+    LogTip,
     Node,
+    SealModel,
     Tag,
     Transcription,
 )
-from indiek.core.signing import sign_event
+from indiek.core.signing import sign_event, sign_object
 
 OUTPUT = (
     Path(__file__).resolve().parents[1]
@@ -70,6 +73,16 @@ RULES = {
         "a meta event's header.base_seq counts the base events its author had "
         "verified and header.base_head is the event_hash of base event number "
         "base_seq (null iff 0); base_seq never decreases along the meta log"
+    ),
+    "blob_root": (
+        "RFC 6962 Merkle Tree Hash (SHA-256) over the ascending-sorted distinct "
+        "blob digests referenced by the events a seal covers: leaf = "
+        "SHA-256(0x00 || raw 32-byte digest), node = SHA-256(0x01 || left || "
+        "right), no blobs = SHA-256(''); written 'sha256:<hex>'"
+    ),
+    "seal": (
+        "sig = 'ed25519:' + Ed25519 over canonical_bytes(seal without 'sig'); "
+        "seal hash = 'sha256:' + SHA-256 of canonical_bytes(whole seal)"
     ),
     "transcription": (
         "a transcription event attests its own log: verified_head must equal the "
@@ -173,6 +186,55 @@ def build_vectors() -> list[dict[str, Any]]:
     return [genesis, chained, meta, transcription]
 
 
+def build_merkle_vectors() -> list[dict[str, Any]]:
+    """blob_root over 0, 1, 2, 3 and 5 digests (RFC 6962 tree shapes)."""
+    vectors = []
+    for n in (0, 1, 2, 3, 5):
+        leaves = sorted(
+            hashlib.sha256(f"blob {i}".encode()).hexdigest() for i in range(n)
+        )
+        vectors.append({"leaves": leaves, "root": blob_root(leaves)})
+    return vectors
+
+
+def build_seal_vectors(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One seal of the base vectors (genesis, chained, transcription) and the
+    meta vector, by the first author."""
+    genesis, chained, meta, transcription = events
+    seed_hex = genesis["seed_hex"]
+    author = Author.from_seed_hex(seed_hex)
+    referenced = [
+        e["event"]["body"]["blob_hash"]
+        for e in (genesis, chained, transcription, meta)
+        if e["event"]["body"].get("blob_hash")
+    ]
+    model = SealModel(
+        seq=1,
+        prev_seal_hash=None,
+        base=LogTip(head=transcription["event_hash"], count=3),
+        meta=LogTip(head=meta["event_hash"], count=1),
+        blob_root=blob_root(referenced),
+        time=TIMESTAMP,
+        key=author.public_key_hex,
+    )
+    unsigned = model.model_dump(mode="json")
+    unsigned.pop("sig")
+    sig = sign_object(unsigned, author, "sig")
+    signed = {**unsigned, "sig": sig}
+    return [
+        {
+            "name": "first seal of the three base vectors and the meta vector",
+            "seed_hex": seed_hex,
+            "public_key_hex": author.public_key_hex,
+            "seal_unsigned": unsigned,
+            "signing_bytes_hex": canonical_bytes(unsigned).hex(),
+            "sig": sig,
+            "seal": signed,
+            "seal_hash": digest(canonical_bytes(signed)),
+        }
+    ]
+
+
 def main() -> None:
     document = {
         "format_version": EVENT_FORMAT_VERSION,
@@ -181,7 +243,9 @@ def main() -> None:
             "must reproduce every hex value from event_unsigned and seed_hex."
         ),
         "rules": RULES,
-        "vectors": build_vectors(),
+        "vectors": (vectors := build_vectors()),
+        "merkle_vectors": build_merkle_vectors(),
+        "seal_vectors": build_seal_vectors(vectors),
     }
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(
