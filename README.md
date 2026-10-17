@@ -519,11 +519,29 @@ ik --dot-env .env keygen --write
 One session exercising every command. Comments show the alias each step
 allocates in a fresh archive.
 
-```bash
-# 1. Setup — writes the key and the archive path into ./.env
-cd ~/kg-demo   # a folder holding the sample files below
+Before running the bash script below, populate a kg-demo-0110/ folder with 
+a similar subtree of files and folders as the one below:
+
+```
+/foo/bar/kg-demo-0110/
+├── figures
+│   └── diagram.png
+├── more
+│   └── andtext.txt
+├── notes
+│   ├── proof-sketch.md
+│   └── statement.txt
+├── scans
+│   └── atiffimage.tiff
+```
+
+Contents of a demo bash script to create a knowledge graph archive from scratch below.
+
+```
+#!/bin/bash
+cd /foo/bar/kg-demo-0110   # a folder holding the sample files below
 ik keygen --write
-ik config --set-archive-path ~/archives/demo
+ik config --set-archive-path ~/tmp/archives/demo-0110
 
 # 2. Managed nodes: inline text, text/plain, text/markdown, image/png
 ik create_node --content "Gödel's incompleteness theorem"            # e1
@@ -534,7 +552,7 @@ ik create_node --content ./figures/diagram.png                      # e4
 # 3. Reference nodes: uri and local_file
 ik create_node --resource-type uri --uri https://arxiv.org/abs/1234.5678 \
   --title "Survey" --media-type "application/pdf; profile=pdfa"     # e5
-ik create_node --resource-type local_file --path ~/scans/page.tiff  # e6
+ik create_node --resource-type local_file --path $(realpath .)/scans/atiffimage.tiff  # e6
 
 # 4. Edges, then append-only revisions
 ik create_edge --source-node e2 --target-node e1 --content "states"  # e7
