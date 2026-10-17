@@ -25,7 +25,7 @@ from pathlib import Path
 from uuid import UUID
 
 from indiek.core.author import Author
-from indiek.core.errors import ArchiveRuleError
+from indiek.core.errors import ArchiveRuleError, AuthorshipError
 from indiek.core.index import ArchiveIndex
 from indiek.core.models import MediaType, Node, ResourceType, SupersedeNode
 from indiek.core.storage import BLOB_HASH_PREFIX
@@ -140,8 +140,14 @@ def supersede_node(
     """Append managed replacement content for an existing node.
 
     The node keeps its UUID and alias; ``title=None`` keeps the current title.
+
+    Raises:
+        AuthorshipError: ``author`` did not create the node (checked before
+            anything is written).
     """
     item = require_base_item(index, ref, edge=False)
+    if author.public_key_hex != item.author:
+        raise AuthorshipError(f"Only the author of Node {ref!r} may supersede it")
     digest = index.store.blobs.put(content)
     body = SupersedeNode(
         node_id=item.id,

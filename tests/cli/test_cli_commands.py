@@ -195,3 +195,61 @@ def test_set_tag_requires_tag_and_id(
     with pytest.raises(SystemExit) as excinfo:
         run_cli("set_tag", *flat)
     assert excinfo.value.code == 2
+
+
+# --- transcribe ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("network", ["base", "meta"])
+def test_transcribe_prints_the_new_head_and_appends_to_that_log(
+    run_cli: Callable[..., None],
+    base_events: Callable[[], list[dict[str, Any]]],
+    meta_events: Callable[[], list[dict[str, Any]]],
+    capsys: pytest.CaptureFixture[str],
+    network: str,
+) -> None:
+    run_cli("create_node", "--content", "n")
+    run_cli("create_node_tag", "--name", "t", "--description", "d")
+    capsys.readouterr()
+    run_cli("transcribe", "--network", network, "--note", "checked")
+
+    out = capsys.readouterr().out.strip()
+    assert out.startswith("Transcription appended: sha256:")
+    log, other = (
+        (base_events(), meta_events())
+        if network == "base"
+        else (meta_events(), base_events())
+    )
+    body = log[-1]["body"]
+    assert (body["event_type"], body["verified_count"], body["note"]) == (
+        "transcription",
+        1,
+        "checked",
+    )
+    assert len(other) == 1  # the other log is untouched
+
+
+def test_transcribe_defaults_to_base(
+    run_cli: Callable[..., None],
+    base_events: Callable[[], list[dict[str, Any]]],
+) -> None:
+    run_cli("create_node", "--content", "n")
+    run_cli("transcribe")
+    assert base_events()[-1]["body"]["event_type"] == "transcription"
+
+
+def test_transcribe_an_empty_log_fails(
+    run_cli: Callable[..., None], capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        run_cli("transcribe", "--network", "meta")
+    assert excinfo.value.code == 1
+    assert "ik: error: Nothing to transcribe: the meta log is empty" in (
+        capsys.readouterr().err
+    )
+
+
+def test_transcribe_rejects_an_unknown_network(run_cli: Callable[..., None]) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        run_cli("transcribe", "--network", "other")
+    assert excinfo.value.code == 2

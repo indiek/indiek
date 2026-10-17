@@ -4,6 +4,26 @@ All notable changes to the `indiek` package are documented here.
 
 ## Unreleased
 
+## 0.13.0 - 2026-10-17
+
+### Breaking
+- (FORMAT3-ALG-AGILITY) Format 3.0 events now name their algorithms: `header.hash_alg` (`"sha256"`) and `header.sig_alg` (`"ed25519"`) are required. Digests and signatures are prefixed strings: `prev_hash` is `sha256:<hex>`, `signature` is `ed25519:<hex>` (blob hashes keep `sha256:<hex>`). Archives written by 0.12.0 no longer open (no backward compatibility before the first public release).
+- (FORMAT3-ALG-AGILITY) `Archive.head`, `Archive.meta_head`, `ArchiveIndex.head`/`meta_head`, `ChainState.head` and `indiek.core.canonical.event_hash()` return prefixed digests (`sha256:<hex>`); `sign_event()` returns `ed25519:<hex>`.
+- (FORMAT3-ALG-AGILITY) New verification errors: `IntegrityError("Unsupported algorithm …")` for an unknown or missing `hash_alg`/`sig_alg`; `IntegrityError("Algorithm mismatch …")` when the `signature` or a non-null `prev_hash` does not carry the header's algorithm as prefix (bare hex included); `IntegrityError("Transcription does not match chain")` for a false attestation.
+- (SUPERSEDE-AUTHORSHIP) Only the original author of a node or edge may supersede it (owner decision 2026-10-17; others who disagree create their own node + edge). `supersede_node` / `supersede_edge` (SDK, ops and CLI) raise `AuthorshipError("Only the author of <Node|Edge> '<ref>' may supersede it")` before any blob is written, and index replay rejects a log containing a supersede signed by another key with `IntegrityError("Supersede by a non-author of item <id>")`. `IndexedItem.author` is therefore always the creator.
+
+### Added
+- (FORMAT3-ALG-AGILITY) `transcription` events, allowed in the base AND the meta log, each attesting only its own log: body `verified_head`, `verified_count`, `verified_hash_alg`, `verified_sig_alg`, `verified_at`, optional `note`. Verification checks that `verified_head` is the hash of event number `verified_count` of that log, earlier than the transcription. No alias is allocated and no projection changes. Any author may transcribe; an empty log cannot be transcribed (`ArchiveRuleError`).
+- (FORMAT3-ALG-AGILITY) `Archive.transcribe(network="base", *, note=None)` (returns the new head), `indiek.ops.transcription.transcribe`, `ik transcribe [--network base|meta] [--note TEXT]` (prints `Transcription appended: <hash>`), `ArchiveIndex.transcriptions["base"|"meta"]` of `indiek.TranscriptionRecord(author, position, body)`.
+- (FORMAT3-ALG-AGILITY) `indiek.core.canonical`: `parse_digest()`, `parse_signature()`, `digest()`, `algorithm_of()`, registries `HASH_ALGORITHMS` / `SIGNATURE_ALGORITHMS`, `DEFAULT_HASH_ALG` / `DEFAULT_SIG_ALG`; `indiek.core.models.Transcription`, `DigestStr`, `EventType.TRANSCRIPTION` / `MetaEventType.TRANSCRIPTION`; `ChainState.sig_alg`.
+- (FORMAT3-ALG-AGILITY) `MANIFEST.json` gains `algorithms: {hash: [...], signature: [...]}` (every algorithm appearing in the archive, via `indiek.ops.manifest.collect_algorithms`), a `TranscriptionBody` schema, `hash_alg`/`sig_alg` header fields and an `event_log.algorithm_agility` rule.
+- (FORMAT3-ALG-AGILITY) Tests: `tests/sdk/test_alg_agility.py` (35) and 5 `ik transcribe` CLI tests.
+- (SUPERSEDE-AUTHORSHIP) Tests: `tests/sdk/test_supersede_authorship.py` (7), a replay test in `tests/sdk/test_index.py`, a CLI refusal test (node + edge) in `tests/cli/test_readme_claims.py`; the two tests that pinned "any key may supersede" now pin the author-only rule. README supersede sections updated. Suite: 258 passed.
+
+### Changed
+- (FORMAT3-ALG-AGILITY) `src/indiek/spec/test_vectors.json` regenerated: prefixed values, vector keys renamed `signature_hex` → `signature` and `event_hash_hex` → `event_hash`, new rules `algorithms` and `transcription`, and a fourth vector (a base transcription by a second author).
+- (FORMAT3-ALG-AGILITY) `tests/cli/test_golden_archive.py` head constants re-recorded (now prefixed); blob set unchanged.
+
 ## 0.12.0 - 2026-10-17
 
 ### Breaking

@@ -3,8 +3,9 @@
 Builds one fixed scenario with deterministic UUIDv7s, timestamps and signing
 seed, then pins the base/meta head hashes and the blob set.  Any refactor that
 changes a single byte of the archive output makes this test fail.  The head
-constants were re-recorded for format 3.0 (CLIPYPI:FORMAT3-CANONICAL, 0.12.0;
-the blob set is unchanged since 0.10.0).  When modules move, update only the
+constants were re-recorded for format 3.0 (CLIPYPI:FORMAT3-CANONICAL, 0.12.0)
+and again for prefixed digests/signatures and ``hash_alg``/``sig_alg`` headers
+(CLIPYPI:FORMAT3-ALG-AGILITY, 0.13.0); the blob set is unchanged since 0.10.0.  When modules move, update only the
 patch targets in ``_freeze``; change the constants only with a format change.
 
 The seed below is a public test vector, not a secret.
@@ -28,8 +29,12 @@ import indiek.core.models as models_mod
 GOLDEN_SEED_HEX = "11" * 32
 START = datetime(2026, 1, 1, tzinfo=UTC)
 
-EXPECTED_BASE_HEAD = "ae0519d55b7e613e97321ca4a277600e704f9b86221e399f3a1f6cc9dc556191"
-EXPECTED_META_HEAD = "e1430fac790263c67fe11a6870a66046ca8875ac497130c36ec41c9261d721dd"
+EXPECTED_BASE_HEAD = (
+    "sha256:df23ca9e5c1a766231159ba408c3d30372c4ad7646f90f5b81bde10b11aafdb8"
+)
+EXPECTED_META_HEAD = (
+    "sha256:2cf2186b35283352a5f1f97b9bcc9d87ba1a4aa9d7fd264691da12406fa4f6d1"
+)
 EXPECTED_BLOBS: list[str] = [
     "71a0b54b349d9f8a95d6bb621386c3cb939b0a711dbf4e746e3031c38b4104f5",
     "a089ebb18adefad6b93195cb15c2e4db2443d54e8d468117870538573f4d630c",
@@ -65,12 +70,12 @@ def _freeze(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _head_hash(log_root: Path) -> str:
-    """Canonical (format 3.0) hash of the last event under ``log_root/events``."""
+    """Prefixed (format 3.0) hash of the last event under ``log_root/events``."""
     paths = sorted(str(p) for p in (log_root / "events").rglob("*ndjson"))
     last_line = Path(paths[-1]).read_text(encoding="utf-8").splitlines()[-1]
     event = json.loads(last_line)
     raw = json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return "sha256:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def test_golden_archive_is_byte_stable(

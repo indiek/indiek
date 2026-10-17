@@ -45,7 +45,7 @@ IndexedItem(id=UUID('01a14a3a-0b6a-76a3-a0e4-de4eeb1d3705'), alias='e7', kind=<I
 
 # `ik` CLI — API Reference
 
-Reference for all thirteen `ik` subcommands. The Python SDK behind them
+Reference for all fourteen `ik` subcommands. The Python SDK behind them
 (`import indiek`) is documented in the docstrings of `indiek.Archive`.
 
 | Command | Purpose | Prints on success |
@@ -63,6 +63,7 @@ Reference for all thirteen `ik` subcommands. The Python SDK behind them
 | `export` | Write the base network as GraphML | nothing |
 | `ingest` | Bulk-create nodes from a folder and edges from a file | nothing |
 | `manifest` | Write `MANIFEST.json` at the archive root | `MANIFEST written to: <path>` |
+| `transcribe` | Attest the verified base or meta log with a signed `transcription` event | `Transcription appended: <hash>` |
 
 ## Install
 
@@ -126,17 +127,26 @@ Python SDK (`indiek.IndieKError` and subclasses); the CLI prints the same
 
 Every command that opens the archive (all but `config` and `keygen`) walks and
 verifies the whole event log **and** the whole meta event log before running. There is no way to skip verification.
-Verification raises `IntegrityError` with one of three messages:
+Every event names its algorithms in `header.hash_alg` (`sha256`) and
+`header.sig_alg` (`ed25519`). Hashes and signatures are written with the
+algorithm as a prefix: `prev_hash` and archive heads are `sha256:<hex>`,
+signatures are `ed25519:<hex>`, blob hashes are `sha256:<hex>`.
 
+Verification raises `IntegrityError` with one of these messages:
+
+- `Unsupported algorithm …` — `hash_alg` or `sig_alg` is missing or unknown.
+- `Algorithm mismatch …` — the `signature`, or a non-null `prev_hash`, does not carry the header's algorithm as prefix (a bare hex value included).
 - `Chain broken!` — a `header.prev_hash` does not match the canonical hash of the preceding event.
 - `Data tampered or bad author!` — the Ed25519 signature does not verify against `header.author`.
 - `File corrupted or missing!` — an event's `blob_hash` is absent from the blob store or its bytes hash to something else.
+- `Transcription does not match chain` — a `transcription` event's `verified_head` is not the hash of event number `verified_count` of its log (see [`ik transcribe`](#ik-transcribe)).
 
 Building the index then raises `IntegrityError` if the logs are inconsistent:
 
 - `Supersede event references unknown item <id>`
 - `Supersede event type does not match item <id>`
 - `Supersede edge events cannot change endpoints`
+- `Supersede by a non-author of item <id>`
 - `Tag assignment references an unknown representation`
 
 A successful verification logs `ARCHIVE INTEGRITY VERIFIED` at `INFO`, on
@@ -298,8 +308,12 @@ Semantics:
 - The node keeps its UUID and its `e{n}` alias.
 - Errors: `ValueError: Node '<id>' does not exist in this archive` and
   `ValueError: ID '<id>' does not reference a base-network node`.
-- There is **no authorship check**: any key may supersede any node. The index
-  then records the superseding key as the node's author.
+- Only the node's author (the key that created it) may supersede it; any other
+  key fails with `AuthorshipError: Only the author of Node '<id>' may supersede it`
+  before anything is written. To disagree with someone else's node, create your
+  own node and an edge to theirs. A log containing a supersede signed by
+  another key fails verification with
+  `IntegrityError: Supersede by a non-author of item <uuid>`.
 - Prints `Node superseded: <uuid>`.
 
 ```bash
@@ -324,7 +338,8 @@ Semantics:
   endpoints can never change.
 - Errors: `ValueError: Edge '<id>' does not exist in this archive` and
   `ValueError: ID '<id>' does not reference a base-network edge`.
-- No authorship check, as for `supersede_node`.
+- Only the edge's author may supersede it, as for `supersede_node`
+  (`AuthorshipError: Only the author of Edge '<id>' may supersede it`).
 - Prints `Edge superseded: <uuid>`.
 
 ```bash
@@ -522,6 +537,35 @@ with Python's default `", "` / `": "` separators.
 
 ```bash
 ik manifest
+```
+
+---
+
+## `ik transcribe`
+
+Appends a signed `transcription` event attesting the log as just verified:
+"I verified this log up to head H (its first N events) under algorithms A, now."
+Algorithms age; generations of transcriptions under newer algorithms are how
+a chain of custody outlives the ones it started with.
+
+| Flag | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `--network` | no | `base` | Log to attest, `base` or `meta`. The event is appended to **that same log**; it never attests the other one. |
+| `--note` | no | none | Free text stored in the event. |
+
+- The body records `verified_head`, `verified_count`, `verified_hash_alg`,
+  `verified_sig_alg`, `verified_at` (UTC) and `note`.
+- It allocates no `e{n}` / `m{n}` alias and changes no node, edge or tag.
+- Any author may transcribe any archive; a key is required.
+- An empty log cannot be transcribed:
+  `ArchiveRuleError: Nothing to transcribe: the <network> log is empty` (exit 1).
+- Prints `Transcription appended: <hash>`, the new head of that log.
+- SDK: `ik.transcribe(network="base", note=None)`; records are listed in
+  `ik.index.transcriptions["base"]` / `["meta"]`.
+
+```bash
+ik transcribe --note "re-verified before release"
+ik transcribe --network meta
 ```
 
 ---

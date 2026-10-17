@@ -21,7 +21,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from indiek.core.author import Author
-from indiek.core.errors import UnknownItemError
+from indiek.core.errors import AuthorshipError, UnknownItemError
 from indiek.core.index import ArchiveIndex, ItemKind
 from indiek.core.models import Edge, MediaType, ResourceType, SupersedeEdge
 from indiek.core.storage import BLOB_HASH_PREFIX
@@ -74,8 +74,14 @@ def supersede_edge(
 
     Endpoints and title are copied from the current projection; they can
     never change.
+
+    Raises:
+        AuthorshipError: ``author`` did not create the edge (checked before
+            anything is written).
     """
     item = require_base_item(index, ref, edge=True)
+    if author.public_key_hex != item.author:
+        raise AuthorshipError(f"Only the author of Edge {ref!r} may supersede it")
     digest = index.store.blobs.put(content)
     body = SupersedeEdge(
         edge_id=item.id,

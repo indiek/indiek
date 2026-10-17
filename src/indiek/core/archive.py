@@ -21,11 +21,16 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
-from indiek.core.canonical import event_hash
+from indiek.core.canonical import (
+    HASH_ALGORITHMS,
+    SIGNATURE_ALGORITHMS,
+    algorithm_of,
+    event_hash,
+)
 from indiek.core.errors import IntegrityError
-from indiek.core.models import EVENT_FORMAT_VERSION
+from indiek.core.models import EVENT_FORMAT_VERSION, TRANSCRIPTION_EVENT
 from indiek.core.signing import verify_event
 from indiek.core.storage import BlobStore, EventLog
 
@@ -34,37 +39,88 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class ChainState:
-    """Tip of a verified log: canonical hex hash of its last event, and length."""
+    """Tip of a verified log: prefixed hash of its last event, its length,
+    and the signature algorithm of its last event (``None`` if empty)."""
 
     head: str | None
     count: int
+    sig_alg: str | None = None
+
+
+def _check_algorithms(event: dict[str, Any]) -> tuple[str, str]:
+    """The event's ``(hash_alg, sig_alg)``, both supported and used consistently."""
+    header = event.get("header", {})
+    hash_alg, sig_alg = header.get("hash_alg"), header.get("sig_alg")
+    if hash_alg not in HASH_ALGORITHMS or sig_alg not in SIGNATURE_ALGORITHMS:
+        raise IntegrityError(
+            f"Unsupported algorithm (hash_alg={hash_alg!r}, sig_alg={sig_alg!r})"
+        )
+    # A null prev_hash is checked by the chain rule; any other value, like the
+    # signature, must carry the header's algorithm as prefix (bare hex fails).
+    checks = [("signature", event.get("signature"), sig_alg)]
+    if header.get("prev_hash") is not None:
+        checks.append(("prev_hash", header.get("prev_hash"), hash_alg))
+    for field, value, expected in checks:
+        found = algorithm_of(value) if isinstance(value, str) else ""
+        if found != expected:
+            raise IntegrityError(
+                f"Algorithm mismatch: {field} uses {found or 'no'!r} prefix, "
+                f"header says {expected!r}"
+            )
+    return hash_alg, sig_alg
+
+
+def _check_transcription(body: dict[str, Any], hashes: list[str]) -> None:
+    """A transcription must attest a prefix of the events before it."""
+    count = body.get("verified_count")
+    head = body.get("verified_head")
+    if (
+        not isinstance(count, int)
+        or isinstance(count, bool)
+        or not 1 <= count <= len(hashes)
+        or head != hashes[count - 1]
+        or algorithm_of(head) != body.get("verified_hash_alg")
+    ):
+        raise IntegrityError("Transcription does not match chain")
 
 
 def verify_chain(log: EventLog, blobs: BlobStore) -> ChainState:
-    """Verify chain links, signatures and referenced blobs of ``log``.
+    """Verify algorithms, chain links, signatures, referenced blobs and
+    transcriptions of ``log``.
 
     Raises:
-        IntegrityError: ``"Unsupported format version …"``, ``"Chain broken!"``,
-            ``"Data tampered or bad author!"`` or ``"File corrupted or missing!"``.
+        IntegrityError: ``"Unsupported format version …"``,
+            ``"Unsupported algorithm …"``, ``"Algorithm mismatch …"``,
+            ``"Chain broken!"``, ``"Data tampered or bad author!"``,
+            ``"File corrupted or missing!"`` or
+            ``"Transcription does not match chain"``.
     """
-    head: str | None = None
-    count = 0
+    hashes: list[str] = []  # hashes[i]: event i under its own hash_alg
+    previous: dict[str, Any] | None = None
+    sig_alg: str | None = None
     for event in log:
         version = event.get("header", {}).get("version")
         if version != EVENT_FORMAT_VERSION:
             raise IntegrityError(f"Unsupported format version {version!r}")
-        # head is None before the first event: only a log's first event may
-        # (and must) have prev_hash null, so a truncated prefix is detected.
-        if event["header"]["prev_hash"] != head:
+        hash_alg, sig_alg = _check_algorithms(event)
+        # Only a log's first event may (and must) have prev_hash null, so a
+        # truncated prefix is detected.  prev_hash uses this event's hash_alg.
+        expected = None if previous is None else event_hash(previous, hash_alg)
+        if event["header"].get("prev_hash") != expected:
             raise IntegrityError("Chain broken!")
         if not verify_event(event):
             raise IntegrityError("Data tampered or bad author!")
-        blob_hash = event["body"].get("blob_hash")
+        body = event.get("body", {})
+        blob_hash = body.get("blob_hash")
         if blob_hash and not blobs.verify(blob_hash):
             raise IntegrityError("File corrupted or missing!")
-        head = event_hash(event)
-        count += 1
-    return ChainState(head=head, count=count)
+        if body.get("event_type") == TRANSCRIPTION_EVENT:
+            _check_transcription(body, hashes)
+        hashes.append(event_hash(event, hash_alg))
+        previous = event
+    return ChainState(
+        head=hashes[-1] if hashes else None, count=len(hashes), sig_alg=sig_alg
+    )
 
 
 class ArchiveStore:

@@ -17,25 +17,30 @@ limitations under the License.
 In-memory projection of an archive: current state of every item, the
 human-friendly alias maps and the tag assignments.
 
-Replay rules (format 2.0):
+Replay rules (format 3.0):
 
 * Base log: each ``create_node`` / ``create_edge`` allocates the next ``e{n}``
   alias (one counter for nodes and edges).  ``supersede_*`` replaces the
-  item's projected body and author and allocates nothing.
+  item's projected body and allocates nothing; it must be signed by the
+  item's creator.
 * Meta log: every event (tags, representations and tag assignments) allocates
   the next ``m{n}`` alias.
+* ``transcription`` events (either log) allocate nothing and change no item;
+  they are listed in :attr:`ArchiveIndex.transcriptions` per network.
 * The index is a rebuildable view; the logs are the only source of truth."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from indiek.core.archive import ArchiveStore
 from indiek.core.errors import IntegrityError, UnknownItemError
-from indiek.core.models import EventType, MetaEventType
+from indiek.core.models import TRANSCRIPTION_EVENT, EventType, MetaEventType
+
+Network = Literal["base", "meta"]
 
 
 class ItemKind(StrEnum):
@@ -101,6 +106,20 @@ class IndexedItem:
         return self.kind in _TAG_KINDS
 
 
+@dataclass(frozen=True, slots=True)
+class TranscriptionRecord:
+    """A ``transcription`` event: who attested, where it sits, what it says.
+
+    ``position`` is the 1-based place of the event in its own log; ``body``
+    holds ``verified_head``, ``verified_count``, ``verified_*_alg``,
+    ``verified_at`` and ``note``.
+    """
+
+    author: str
+    position: int
+    body: dict[str, Any]
+
+
 class ArchiveIndex:
     """Replays a verified :class:`ArchiveStore` into a queryable projection."""
 
@@ -111,6 +130,10 @@ class ArchiveIndex:
         self._alias_of: dict[UUID, str] = {}
         self._underlying_of: dict[UUID, UUID] = {}
         self._representation_of: dict[UUID, UUID] = {}
+        self.transcriptions: dict[Network, list[TranscriptionRecord]] = {
+            "base": [],
+            "meta": [],
+        }
         self._replay_base()
         self._replay_meta()
 
@@ -165,11 +188,16 @@ class ArchiveIndex:
 
     def _replay_base(self) -> None:
         count = 0
-        for event in self.store.base_log:
+        for position, event in enumerate(self.store.base_log, start=1):
             body = event["body"]
             event_type = body.get("event_type")
             author = event["header"]["author"]
-            if event_type in {EventType.CREATE_NODE.value, EventType.CREATE_EDGE.value}:
+            if event_type == TRANSCRIPTION_EVENT:
+                self._record_transcription("base", position, author, body)
+            elif event_type in {
+                EventType.CREATE_NODE.value,
+                EventType.CREATE_EDGE.value,
+            }:
                 count += 1
                 kind = _KIND_OF_EVENT[event_type]
                 item_id = UUID(body["edge_id" if kind is ItemKind.EDGE else "node_id"])
@@ -193,6 +221,10 @@ class ArchiveIndex:
             raise IntegrityError(f"Supersede event references unknown item {raw_id}")
         if previous.is_edge != is_edge:
             raise IntegrityError(f"Supersede event type does not match item {raw_id}")
+        # Only the creator may revise an item, so ``previous.author`` is always
+        # the creator (owner decision 2026-10-17).
+        if author != previous.author:
+            raise IntegrityError(f"Supersede by a non-author of item {raw_id}")
         if is_edge:
             for endpoint in ("source_node", "target_node"):
                 if str(previous.body.get(endpoint)) != str(body.get(endpoint)):
@@ -202,10 +234,22 @@ class ArchiveIndex:
         previous.author = author
         previous.body = dict(body)
 
+    def _record_transcription(
+        self, network: Network, position: int, author: str, body: dict[str, Any]
+    ) -> None:
+        self.transcriptions[network].append(
+            TranscriptionRecord(author, position, dict(body))
+        )
+
     def _replay_meta(self) -> None:
         count = 0
-        for event in self.store.meta_log:
+        for position, event in enumerate(self.store.meta_log, start=1):
             body = event["body"]
+            if body["event_type"] == TRANSCRIPTION_EVENT:
+                self._record_transcription(
+                    "meta", position, event["header"]["author"], body
+                )
+                continue
             kind = _KIND_OF_EVENT.get(body["event_type"])
             if kind is None:
                 continue

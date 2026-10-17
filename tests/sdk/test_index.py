@@ -124,16 +124,25 @@ def test_items_are_typed(root: Path, build: Builder) -> None:
     assert items[a].tags == set()
 
 
-def test_supersede_replaces_projection_and_author_but_keeps_alias(
+def test_supersede_replaces_projection_but_keeps_alias_and_author(
     root: Path, build: Builder
 ) -> None:
     node = build.node("v1", title="T")
-    build.supersede_node(node, "v2", title="T2", author=OTHER)
+    build.supersede_node(node, "v2", title="T2")
     item = _index(root).items[node]
     assert item.alias == "e1"
     assert item.body["event_type"] == "supersede_node"
     assert item.body["title"] == "T2"
-    assert item.author == OTHER.public_key_hex
+    assert item.author == AUTHOR.public_key_hex
+
+
+def test_supersede_by_another_author_is_an_integrity_error(
+    root: Path, build: Builder
+) -> None:
+    node = build.node("v1")
+    build.supersede_node(node, "v2", author=OTHER)
+    with pytest.raises(IntegrityError, match="Supersede by a non-author of item"):
+        _index(root)
 
 
 def test_representation_maps_both_directions(root: Path, build: Builder) -> None:

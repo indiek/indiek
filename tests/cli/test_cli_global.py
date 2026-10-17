@@ -112,9 +112,9 @@ def test_tampered_signature_is_detected(
     run_cli("create_node", "--content", "original")
 
     def flip_signature(events: list[dict[str, Any]]) -> None:
-        signature = events[0]["signature"]
-        flipped = "0" if signature[0] != "0" else "1"
-        events[0]["signature"] = flipped + signature[1:]
+        prefix, digits = events[0]["signature"].split(":")
+        flipped = "0" if digits[0] != "0" else "1"
+        events[0]["signature"] = f"{prefix}:{flipped}{digits[1:]}"
 
     _rewrite_events(archive_root, flip_signature)
 
@@ -134,7 +134,7 @@ def test_broken_chain_is_detected(
     run_cli("create_node", "--content", "second")
 
     def break_chain(events: list[dict[str, Any]]) -> None:
-        events[1]["header"]["prev_hash"] = "0" * 64
+        events[1]["header"]["prev_hash"] = "sha256:" + "0" * 64
 
     _rewrite_events(archive_root, break_chain)
 

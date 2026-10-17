@@ -33,6 +33,7 @@ from indiek.core.models import (
     MetaEventType,
     Node,
     Tag,
+    Transcription,
 )
 from indiek.core.signing import sign_event
 
@@ -51,13 +52,24 @@ RULES = {
         'json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False) '
         "encoded as UTF-8"
     ),
+    "algorithms": (
+        "header.hash_alg and header.sig_alg name the event's algorithms (today "
+        "'sha256' and 'ed25519'); digests are written '<hash_alg>:<lowercase hex>' "
+        "and signatures '<sig_alg>:<lowercase hex>'; the prev_hash and signature "
+        "prefixes must equal the header's algorithms"
+    ),
     "signature": (
-        "Ed25519 (RFC 8032) over canonical_bytes(event without its 'signature' field), "
-        "no pre-hash; stored as lowercase hex"
+        "'ed25519:' + lowercase hex Ed25519 (RFC 8032) signature over "
+        "canonical_bytes(event without its 'signature' field), no pre-hash"
     ),
     "event_hash": (
-        "lowercase hex SHA-256 of canonical_bytes(whole event, 'signature' included); "
-        "it is the next event's header.prev_hash"
+        "'sha256:' + lowercase hex SHA-256 of canonical_bytes(whole event, "
+        "'signature' included); it is the next event's header.prev_hash"
+    ),
+    "transcription": (
+        "a transcription event attests its own log: verified_head must equal the "
+        "event_hash of event number verified_count (1-based) of that log, and "
+        "verified_count must be smaller than the transcription's own position"
     ),
     "strict_parsing": "a log line with duplicate keys, floats, NaN or Infinity is invalid",
 }
@@ -75,9 +87,9 @@ def _vector(name: str, seed_hex: str, event: BaseModel) -> dict[str, Any]:
         "public_key_hex": author.public_key_hex,
         "event_unsigned": unsigned,
         "signing_bytes_hex": canonical_bytes(unsigned).hex(),
-        "signature_hex": signature,
+        "signature": signature,
         "event": signed,
-        "event_hash_hex": event_hash(signed),
+        "event_hash": event_hash(signed),
     }
 
 
@@ -106,7 +118,7 @@ def build_vectors() -> list[dict[str, Any]]:
         alice_seed,
         EventModel(
             header=EventHeader(
-                prev_hash=genesis["event_hash_hex"], timestamp=TIMESTAMP, author=alice
+                prev_hash=genesis["event_hash"], timestamp=TIMESTAMP, author=alice
             ),
             body=Edge(
                 edge_id=UUID("019a0000-0000-7000-8000-000000000002"),
@@ -130,7 +142,24 @@ def build_vectors() -> list[dict[str, Any]]:
             ),
         ),
     )
-    return [genesis, chained, meta]
+    transcription = _vector(
+        "base transcription by a second author attesting the first two events",
+        bob_seed,
+        EventModel(
+            header=EventHeader(
+                prev_hash=chained["event_hash"], timestamp=TIMESTAMP, author=bob
+            ),
+            body=Transcription(
+                verified_head=chained["event_hash"],
+                verified_count=2,
+                verified_hash_alg="sha256",
+                verified_sig_alg="ed25519",
+                verified_at=TIMESTAMP,
+                note="re-verified",
+            ),
+        ),
+    )
+    return [genesis, chained, meta, transcription]
 
 
 def main() -> None:

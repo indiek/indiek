@@ -36,11 +36,12 @@ from indiek.core.models import (
     SupersedeEdge,
     SupersedeNode,
     Tag,
+    Transcription,
 )
 from indiek.core.signing import sign_event
 
-BaseBody = Node | Edge | SupersedeNode | SupersedeEdge
-MetaBody = Tag | MetaRepresentation | MetaEdge
+BaseBody = Node | Edge | SupersedeNode | SupersedeEdge | Transcription
+MetaBody = Tag | MetaRepresentation | MetaEdge | Transcription
 
 
 def append_base(index: ArchiveIndex, author: Author, body: BaseBody) -> EventModel:

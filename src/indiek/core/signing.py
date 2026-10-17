@@ -21,7 +21,7 @@ whole event *minus* its ``signature`` field, i.e. ``{"body": …, "header": …}
 The bytes are signed directly (no pre-hash).  Signing the header binds each
 signature to its chain position (``prev_hash``), time and author, so a signed
 event cannot be replayed elsewhere in a chain.  Signatures are stored as
-lowercase hex."""
+``ed25519:<lowercase hex>`` (see :func:`indiek.core.canonical.parse_signature`)."""
 
 from __future__ import annotations
 
@@ -34,7 +34,13 @@ import nacl.signing
 from pydantic import BaseModel
 
 from indiek.core.author import Author
-from indiek.core.canonical import canonical_bytes, json_ready
+from indiek.core.canonical import (
+    DEFAULT_SIG_ALG,
+    canonical_bytes,
+    json_ready,
+    parse_signature,
+)
+from indiek.core.errors import IntegrityError
 
 
 def signing_bytes(event: Mapping[str, Any] | BaseModel) -> bytes:
@@ -45,8 +51,11 @@ def signing_bytes(event: Mapping[str, Any] | BaseModel) -> bytes:
 
 
 def sign_event(event: Mapping[str, Any] | BaseModel, author: Author) -> str:
-    """Sign ``event`` (any ``signature`` field is ignored); return the hex signature."""
-    return author.sign(signing_bytes(event)).hex()
+    """Sign ``event`` (any ``signature`` field is ignored).
+
+    Returns the prefixed signature ``ed25519:<hex>``.
+    """
+    return f"{DEFAULT_SIG_ALG}:{author.sign(signing_bytes(event)).hex()}"
 
 
 def verify_event(event: Mapping[str, Any]) -> bool:
@@ -55,10 +64,19 @@ def verify_event(event: Mapping[str, Any]) -> bool:
     Malformed keys, signatures or events verify as ``False`` rather than raising.
     """
     try:
+        sig_alg, signature = parse_signature(event["signature"])
+        if sig_alg != DEFAULT_SIG_ALG:
+            return False
         verify_key = nacl.signing.VerifyKey(
             event["header"]["author"], encoder=nacl.encoding.HexEncoder
         )
-        verify_key.verify(signing_bytes(event), bytes.fromhex(event["signature"]))
-    except nacl.exceptions.BadSignatureError, ValueError, TypeError, KeyError:
+        verify_key.verify(signing_bytes(event), signature)
+    except (
+        nacl.exceptions.BadSignatureError,
+        IntegrityError,
+        ValueError,
+        TypeError,
+        KeyError,
+    ):
         return False
     return True

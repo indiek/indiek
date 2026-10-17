@@ -7,7 +7,8 @@ PyNaCl only) so these tests pin the rule independently of the SDK:
   ensure_ascii=False)`` encoded as UTF-8;
 * signature = Ed25519 over the canonical bytes of the whole event minus its
   ``signature`` field (no pre-hash);
-* event hash = SHA-256 hex of the canonical bytes of the whole event.
+* event hash = ``sha256:`` + SHA-256 hex of the canonical bytes of the whole
+  event; signatures are stored as ``ed25519:<hex>`` (CLIPYPI:FORMAT3-ALG-AGILITY).
 """
 
 from __future__ import annotations
@@ -47,6 +48,8 @@ def _unsigned_event(author: Author, prev_hash: str | None = None) -> dict[str, A
     return {
         "header": {
             "version": "3.0",
+            "hash_alg": "sha256",
+            "sig_alg": "ed25519",
             "prev_hash": prev_hash,
             "timestamp": "2026-10-17T12:00:00Z",
             "author": author.public_key_hex,
@@ -82,7 +85,8 @@ def test_model_and_its_json_dump_are_canonically_equal() -> None:
 
 def test_event_hash_covers_the_whole_event_including_signature() -> None:
     event = _signed_event(Author.from_seed_hex(SEED_HEX))
-    assert event_hash(event) == hashlib.sha256(_reference_bytes(event)).hexdigest()
+    expected = hashlib.sha256(_reference_bytes(event)).hexdigest()
+    assert event_hash(event) == f"sha256:{expected}"
     assert event_hash(event) != event_hash({**event, "signature": "00" * 64})
 
 
@@ -92,7 +96,8 @@ def test_event_hash_covers_the_whole_event_including_signature() -> None:
 def test_sign_event_matches_reference_signature() -> None:
     author = Author.from_seed_hex(SEED_HEX)
     event = _unsigned_event(author)
-    expected = author.signing_key.sign(_reference_bytes(event)).signature.hex()
+    signature = author.signing_key.sign(_reference_bytes(event)).signature.hex()
+    expected = f"ed25519:{signature}"
     assert sign_event(event, author) == expected
     # a present ``signature`` field (e.g. ``None`` on a fresh model) is ignored
     assert sign_event({**event, "signature": None}, author) == expected
@@ -100,10 +105,9 @@ def test_sign_event_matches_reference_signature() -> None:
 
 def test_sign_then_verify_round_trip() -> None:
     event = _signed_event(Author.from_seed_hex(SEED_HEX))
-    assert (
-        len(event["signature"]) == 128
-        and event["signature"] == event["signature"].lower()
-    )
+    signature = event["signature"]
+    assert signature.startswith("ed25519:") and len(signature) == len("ed25519:") + 128
+    assert signature == signature.lower()
     assert verify_event(event)
 
 
@@ -248,8 +252,8 @@ def test_shipped_test_vectors_are_reproduced() -> None:
         assert canonical_bytes(unsigned).hex() == vector["signing_bytes_hex"], vector[
             "name"
         ]
-        assert sign_event(unsigned, author) == vector["signature_hex"], vector["name"]
-        signed = {**unsigned, "signature": vector["signature_hex"]}
+        assert sign_event(unsigned, author) == vector["signature"], vector["name"]
+        signed = {**unsigned, "signature": vector["signature"]}
         assert signed == vector["event"], vector["name"]
         assert verify_event(signed), vector["name"]
-        assert event_hash(signed) == vector["event_hash_hex"], vector["name"]
+        assert event_hash(signed) == vector["event_hash"], vector["name"]

@@ -19,20 +19,19 @@ The public facade of the IndieK SDK: :class:`Archive`."""
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from itertools import chain
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, Self
 from uuid import UUID
 
 from indiek.core.archive import ArchiveStore
 from indiek.core.author import Author
 from indiek.core.errors import ArchiveRuleError, AuthorshipError
-from indiek.core.index import ArchiveIndex
+from indiek.core.index import ArchiveIndex, Network
 from indiek.core.models import MediaType, ResourceType
-from indiek.ops import edges, export, ingest, manifest, nodes, tags
+from indiek.ops import edges, export, ingest, manifest, nodes, tags, transcription
 from indiek.ops.ingest import IngestResult
 from indiek.ops.tags import TagKind
-
-Network = Literal["base", "meta"]
 
 
 class Archive:
@@ -78,12 +77,12 @@ class Archive:
 
     @property
     def head(self) -> str | None:
-        """Canonical hash of the last base event, or ``None`` if empty."""
+        """Prefixed hash (``sha256:<hex>``) of the last base event, or ``None``."""
         return self._index.head
 
     @property
     def meta_head(self) -> str | None:
-        """Canonical hash of the last meta event, or ``None`` if empty."""
+        """Prefixed hash (``sha256:<hex>``) of the last meta event, or ``None``."""
         return self._index.meta_head
 
     def refresh(self) -> None:
@@ -191,6 +190,23 @@ class Archive:
         finally:
             self.refresh()
 
+    # -- attestation -------------------------------------------------------
+
+    def transcribe(self, network: Network = "base", *, note: str | None = None) -> str:
+        """Attest the verified ``network`` log ("I verified it up to its head,
+        under its algorithms, now") by appending a ``transcription`` event to
+        that same log.  Any author may transcribe.  Returns the new head.
+
+        Raises:
+            ArchiveRuleError: the log is empty (nothing to attest).
+            ValueError: ``network`` is neither ``"base"`` nor ``"meta"``.
+        """
+        if network not in ("base", "meta"):
+            raise ValueError(f"network must be 'base' or 'meta', not {network!r}")
+        new_head = transcription.transcribe(self._index, self._writer(), network, note)
+        self.refresh()
+        return new_head
+
     # -- bulk, export, documentation ----------------------------------------
 
     def ingest(
@@ -225,7 +241,11 @@ class Archive:
         return export.export_graphml(self._index, output_path, tags)
 
     def write_manifest(self) -> Path:
-        """Write ``MANIFEST.json`` at the archive root (listing the author, if any)."""
+        """Write ``MANIFEST.json`` at the archive root, listing the author (if
+        any) and every algorithm used in the archive."""
         self._path.mkdir(parents=True, exist_ok=True)
         keys = [self.author.public_key_hex] if self.author else []
-        return manifest.write_manifest(self._path, keys)
+        algorithms = manifest.collect_algorithms(
+            chain(self.events("base"), self.events("meta"))
+        )
+        return manifest.write_manifest(self._path, keys, algorithms)

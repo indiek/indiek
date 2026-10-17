@@ -24,7 +24,7 @@ DAY2 = datetime(2026, 1, 2, tzinfo=UTC)
 
 def _canonical_hex(event: dict[str, Any]) -> str:
     raw = json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return "sha256:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _append_node(
@@ -145,13 +145,15 @@ def test_valid_chain_head_is_hash_of_last_event(
 ) -> None:
     first = _append_node(log, blobs, "one", None)
     second = _append_node(log, blobs, "two", _canonical_hex(first))
-    assert verify_chain(log, blobs) == ChainState(head=_canonical_hex(second), count=2)
+    assert verify_chain(log, blobs) == ChainState(
+        head=_canonical_hex(second), count=2, sig_alg="ed25519"
+    )
 
 
 def test_broken_chain(log: EventLog, blobs: BlobStore) -> None:
     first = _append_node(log, blobs, "one", None)
     _append_node(log, blobs, "two", _canonical_hex(first))
-    _rewrite(log, 1, lambda e: e["header"].update(prev_hash="0" * 64))
+    _rewrite(log, 1, lambda e: e["header"].update(prev_hash="sha256:" + "0" * 64))
     with pytest.raises(IntegrityError, match="Chain broken!"):
         verify_chain(log, blobs)
 

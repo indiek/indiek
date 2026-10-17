@@ -14,15 +14,19 @@ limitations under the License.
 
 ---
 
-Canonical serialisation, event hashes and strict parsing of log lines
-(format 3.0).
+Canonical serialisation, algorithm-prefixed digests and signatures, and
+strict parsing of log lines (format 3.0).
 
 * Canonical bytes: ``json.dumps(obj, sort_keys=True, separators=(",", ":"),
   ensure_ascii=False)`` encoded as UTF-8.  Pydantic models are first dumped
   with ``model_dump(mode="json")``.
-* Event hash: lowercase hex SHA-256 of the canonical bytes of the whole event
-  (``header``, ``body`` and ``signature``).  The next event's
-  ``header.prev_hash`` holds it.
+* Algorithm agility: every digest is written ``<hash_alg>:<lowercase hex>``
+  (e.g. ``sha256:…``) and every signature ``<sig_alg>:<lowercase hex>`` (e.g.
+  ``ed25519:…``).  An event names its algorithms in ``header.hash_alg`` and
+  ``header.sig_alg``; its ``prev_hash`` and ``signature`` prefixes must match.
+* Event hash: digest, under a given ``hash_alg``, of the canonical bytes of
+  the whole event (``header``, ``body`` and ``signature``).  The next event's
+  ``header.prev_hash`` holds it, computed with *that* event's ``hash_alg``.
 * Log lines are parsed strictly: duplicate object keys, floats and the
   non-standard constants ``NaN``/``Infinity`` make a line invalid, because
   implementations disagree on how to read or re-serialise them."""
@@ -31,12 +35,22 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+import re
+from collections.abc import Callable, Mapping
 from typing import Any, NoReturn
 
 from pydantic import BaseModel
 
 from indiek.core.errors import IntegrityError
+
+DEFAULT_HASH_ALG = "sha256"
+DEFAULT_SIG_ALG = "ed25519"
+
+# Supported algorithms: hash name -> constructor; signature name -> byte length.
+HASH_ALGORITHMS: dict[str, Callable[[bytes], Any]] = {"sha256": hashlib.sha256}
+SIGNATURE_ALGORITHMS: dict[str, int] = {"ed25519": 64}
+
+_LOWER_HEX = re.compile(r"[0-9a-f]*")
 
 
 def json_ready(obj: Mapping[str, Any] | BaseModel) -> dict[str, Any]:
@@ -53,9 +67,63 @@ def canonical_bytes(obj: Mapping[str, Any] | BaseModel) -> bytes:
     ).encode("utf-8")
 
 
-def event_hash(event: Mapping[str, Any] | BaseModel) -> str:
-    """Lowercase hex SHA-256 of the canonical bytes of the whole event."""
-    return hashlib.sha256(canonical_bytes(event)).hexdigest()
+def algorithm_of(value: str) -> str:
+    """The ``<alg>`` prefix of an ``<alg>:<hex>`` string (``""`` if none)."""
+    alg, sep, _ = value.partition(":")
+    return alg if sep else ""
+
+
+def digest(data: bytes, hash_alg: str = DEFAULT_HASH_ALG) -> str:
+    """Prefixed digest ``<hash_alg>:<hex>`` of ``data``."""
+    try:
+        constructor = HASH_ALGORITHMS[hash_alg]
+    except KeyError:
+        raise IntegrityError(f"Unsupported algorithm {hash_alg!r}") from None
+    return f"{hash_alg}:{constructor(data).hexdigest()}"
+
+
+def event_hash(
+    event: Mapping[str, Any] | BaseModel, hash_alg: str = DEFAULT_HASH_ALG
+) -> str:
+    """Prefixed digest of the canonical bytes of the whole event."""
+    return digest(canonical_bytes(event), hash_alg)
+
+
+def _split(value: object, kind: str) -> tuple[str, str]:
+    if not isinstance(value, str) or ":" not in value:
+        raise IntegrityError(f"Malformed {kind} {value!r}: expected '<alg>:<hex>'")
+    alg, _, hex_part = value.partition(":")
+    if not hex_part or _LOWER_HEX.fullmatch(hex_part) is None:
+        raise IntegrityError(f"Malformed {kind} {value!r}: not lowercase hex")
+    return alg, hex_part
+
+
+def parse_digest(value: str) -> tuple[str, str]:
+    """Split ``<hash_alg>:<hex>`` into ``(hash_alg, hex)``.
+
+    Raises:
+        IntegrityError: malformed value, unknown algorithm or wrong length.
+    """
+    alg, hex_part = _split(value, "digest")
+    if alg not in HASH_ALGORITHMS:
+        raise IntegrityError(f"Unsupported algorithm {alg!r}")
+    if len(hex_part) != 2 * HASH_ALGORITHMS[alg]().digest_size:
+        raise IntegrityError(f"Malformed digest {value!r}: wrong length")
+    return alg, hex_part
+
+
+def parse_signature(value: str) -> tuple[str, bytes]:
+    """Split ``<sig_alg>:<hex>`` into ``(sig_alg, signature bytes)``.
+
+    Raises:
+        IntegrityError: malformed value, unknown algorithm or wrong length.
+    """
+    alg, hex_part = _split(value, "signature")
+    if alg not in SIGNATURE_ALGORITHMS:
+        raise IntegrityError(f"Unsupported algorithm {alg!r}")
+    if len(hex_part) != 2 * SIGNATURE_ALGORITHMS[alg]:
+        raise IntegrityError(f"Malformed signature {value!r}: wrong length")
+    return alg, bytes.fromhex(hex_part)
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

@@ -30,12 +30,19 @@ from uuid import UUID, uuid7
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from indiek.core.canonical import DEFAULT_HASH_ALG, DEFAULT_SIG_ALG
+
 # Version 3.0 is the only format readers accept (no backward compatibility
 # before the first public release): whole-event signatures, compact canonical
-# JSON.  See :mod:`indiek.core.canonical` and :mod:`indiek.core.signing`.
+# JSON, algorithm-prefixed digests and signatures.  See
+# :mod:`indiek.core.canonical` and :mod:`indiek.core.signing`.
 EVENT_FORMAT_VERSION: str = "3.0"
 
-Sha256HexStr = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+TRANSCRIPTION_EVENT = "transcription"
+
+# ``<alg>:<lowercase hex>``; the algorithm and length are checked on
+# verification by :func:`indiek.core.canonical.parse_digest`.
+DigestStr = Annotated[str, Field(pattern=r"^[a-z0-9-]+:[0-9a-f]+$")]
 PublicKeyHexStr = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 BlobHashStr = Annotated[str, Field(pattern=r"^sha256:[0-9a-f]{64}$")]
 
@@ -66,6 +73,7 @@ class EventType(str, Enum):
     CREATE_EDGE = "create_edge"
     SUPERSEDE_NODE = "supersede_node"
     SUPERSEDE_EDGE = "supersede_edge"
+    TRANSCRIPTION = TRANSCRIPTION_EVENT
 
 
 class MetaEventType(str, Enum):
@@ -77,13 +85,16 @@ class MetaEventType(str, Enum):
     CREATE_NODE_REPRESENTATION = "create_node_representation"
     SET_EDGE_TAG = "set_edge_tag"
     SET_NODE_TAG = "set_node_tag"
+    TRANSCRIPTION = TRANSCRIPTION_EVENT
 
 
 class EventHeader(BaseModel):
     """Signed event-chain metadata."""
 
     version: str = EVENT_FORMAT_VERSION
-    prev_hash: Sha256HexStr | None
+    hash_alg: str = DEFAULT_HASH_ALG
+    sig_alg: str = DEFAULT_SIG_ALG
+    prev_hash: DigestStr | None
     timestamp: dt = Field(default_factory=lambda: dt.now(datetime.UTC))
     author: PublicKeyHexStr
 
@@ -241,11 +252,32 @@ class SupersedeEdge(EventBody):
     target_node: UUID
 
 
+class Transcription(BaseModel):
+    """An attestation, signed under the event's own algorithms: "I verified
+    this log up to ``verified_head`` (its first ``verified_count`` events)
+    under ``verified_hash_alg`` / ``verified_sig_alg`` at ``verified_at``".
+
+    Allowed in the base and in the meta log; it attests only the log it sits
+    in, allocates no alias and changes no projection.
+    """
+
+    body_type: Literal["transcription"] = "transcription"
+    event_type: Literal["transcription"] = "transcription"
+    verified_head: DigestStr
+    verified_count: int = Field(ge=1)
+    verified_hash_alg: str
+    verified_sig_alg: str
+    verified_at: dt = Field(default_factory=lambda: dt.now(datetime.UTC))
+    note: str | None = None
+
+
 class EventModel(BaseModel):
     """A complete signed base-network log entry."""
 
     header: EventHeader
-    body: Node | Edge | SupersedeNode | SupersedeEdge = Field(discriminator="body_type")
+    body: Node | Edge | SupersedeNode | SupersedeEdge | Transcription = Field(
+        discriminator="body_type"
+    )
     signature: str | None = None
 
 
@@ -253,5 +285,7 @@ class MetaEventModel(BaseModel):
     """A complete signed meta-network log entry."""
 
     header: MetaEventHeader
-    body: MetaRepresentation | Tag | MetaEdge = Field(discriminator="body_type")
+    body: MetaRepresentation | Tag | MetaEdge | Transcription = Field(
+        discriminator="body_type"
+    )
     signature: str | None = None

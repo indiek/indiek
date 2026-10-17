@@ -206,6 +206,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="File defining edges to create.",
     )
 
+    transcribe_parser = subparsers.add_parser(
+        "transcribe",
+        help=(
+            "Attest the verified base (or meta) log: append a signed "
+            "transcription event recording its head and length."
+        ),
+    )
+    transcribe_parser.add_argument(
+        "--network",
+        choices=["base", "meta"],
+        default="base",
+        help="Log to attest; the event is appended to that same log (default: base).",
+    )
+    transcribe_parser.add_argument(
+        "--note", default=None, help="Optional free-text note stored in the event."
+    )
+
     subparsers.add_parser(
         "manifest",
         help=(
@@ -356,6 +373,9 @@ def _run_archive_command(
             ik.export_graphml(args.output_path, args.tags)
         case "ingest":
             ik.ingest(input_folder=args.input_folder, edges_file=args.edges_def_file)
+        case "transcribe":
+            new_head = ik.transcribe(args.network, note=args.note)
+            print(f"Transcription appended: {new_head}")
         case "manifest":
             print(f"MANIFEST written to: {ik.write_manifest()}")
 

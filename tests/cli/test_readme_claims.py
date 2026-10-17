@@ -51,16 +51,39 @@ def test_config_writes_quoted_path(archive_root, author_seed_hex, monkeypatch):
     assert dotenv.read_text(encoding="utf-8").strip() == "IK_ARCHIVE_PATH='/x/y'"
 
 
-def test_supersede_node_keeps_title_any_author(run_cli, base_events, other_author):
+def test_supersede_node_keeps_title(run_cli, base_events, author_public_key):
     run_cli("create_node", "--content", "v1", "--title", "T")
-    run_cli(
-        "supersede_node", "--node-id", "e1", "--content", "v2", seed_hex=other_author[0]
-    )
+    run_cli("supersede_node", "--node-id", "e1", "--content", "v2")
     last = base_events()[-1]
     assert last["body"]["event_type"] == "supersede_node"
     assert last["body"]["title"] == "T"
     assert last["body"]["media_type"].startswith("text/markdown")
-    assert last["header"]["author"] == other_author[1]
+    assert last["header"]["author"] == author_public_key
+
+
+@pytest.mark.parametrize(
+    ("command", "flag", "ref", "label"),
+    [
+        ("supersede_node", "--node-id", "e1", "Node"),
+        ("supersede_edge", "--edge-id", "e3", "Edge"),
+    ],
+)
+def test_supersede_by_another_author_is_refused(
+    run_cli, base_events, other_author, capsys, command, flag, ref, label
+):
+    run_cli("create_node", "--content", "a")
+    run_cli("create_node", "--content", "b")
+    run_cli(
+        "create_edge", "--source-node", "e1", "--target-node", "e2", "--content", "r"
+    )
+    with pytest.raises(SystemExit) as excinfo:
+        run_cli(command, flag, ref, "--content", "rival", seed_hex=other_author[0])
+    assert excinfo.value.code == 1
+    assert (
+        f"ik: error: Only the author of {label} '{ref}' may supersede it"
+        in capsys.readouterr().err
+    )
+    assert len(base_events()) == 3
 
 
 def test_supersede_edge_keeps_endpoints(run_cli, base_events):

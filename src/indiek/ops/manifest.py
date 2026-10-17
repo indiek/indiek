@@ -29,9 +29,11 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from indiek.core.canonical import algorithm_of
 from indiek.core.models import EVENT_FORMAT_VERSION
 
 logger = logging.getLogger(__name__)
@@ -46,17 +48,34 @@ _EVENT_HEADER_SCHEMA: Dict[str, Any] = {
         "version": {
             "type": "string",
             "description": (
-                "Format version string (for example '2.0'). Consumers MUST reject events "
+                "Format version string ('3.0'). Consumers MUST reject events "
                 "whose version they do not recognise."
+            ),
+        },
+        "hash_alg": {
+            "type": "string",
+            "enum": ["sha256"],
+            "description": (
+                "Hash algorithm of this event: prev_hash is computed with it and "
+                "MUST carry it as prefix; the event's own hash also uses it."
+            ),
+        },
+        "sig_alg": {
+            "type": "string",
+            "enum": ["ed25519"],
+            "description": (
+                "Signature algorithm of this event; the signature MUST carry it "
+                "as prefix."
             ),
         },
         "prev_hash": {
             "type": "string | null",
+            "pattern": "^<hash_alg>:<lowercase hex>$",
             "description": (
-                "SHA-256 hex digest (64 lower-case hex characters) of the canonical "
-                "bytes of the *entire* preceding event, signature included (see "
-                "event_log.canonical_bytes).  null for the first event of a log, and "
-                "only there."
+                "'<hash_alg>:<hex>' digest, under this event's hash_alg, of the "
+                "canonical bytes of the *entire* preceding event, signature included "
+                "(see event_log.canonical_bytes).  null for the first event of a "
+                "log, and only there."
             ),
         },
         "timestamp": {
@@ -194,6 +213,7 @@ _EVENT_BODY_SCHEMA: Dict[str, Any] = {
                 "last_verified": {"$ref": "node.last_verified"},
             },
         },
+        "transcription": {"$ref": "TranscriptionBody"},
         "supersede_edge": {
             "discriminator": "body_type = 'supersede_edge'",
             "fields": {
@@ -267,6 +287,7 @@ _META_EVENT_BODY_SCHEMA: Dict[str, Any] = {
                 },
             },
         },
+        "transcription": {"$ref": "TranscriptionBody"},
         "edge": {
             "discriminator": "body_type = 'edge'",
             "event_types": ["set_node_tag", "set_edge_tag"],
@@ -291,6 +312,27 @@ _META_EVENT_BODY_SCHEMA: Dict[str, Any] = {
     },
 }
 
+_TRANSCRIPTION_BODY_SCHEMA: Dict[str, Any] = {
+    "description": (
+        "An attestation allowed in the base AND in the meta log: 'I verified this "
+        "log up to verified_head (its first verified_count events) under "
+        "verified_hash_alg / verified_sig_alg at verified_at'.  It attests only "
+        "the log it sits in, allocates no alias and changes no projection.  "
+        "Verification rejects it unless 1 <= verified_count < its own position and "
+        "verified_head equals the hash of event number verified_count of that log."
+    ),
+    "fields": {
+        "body_type": {"const": "transcription"},
+        "event_type": {"const": "transcription"},
+        "verified_head": {"type": "string", "pattern": "^<hash_alg>:<hex>$"},
+        "verified_count": {"type": "integer", "minimum": 1},
+        "verified_hash_alg": {"type": "string"},
+        "verified_sig_alg": {"type": "string"},
+        "verified_at": {"type": "string", "format": "ISO-8601 datetime"},
+        "note": {"type": "string | null"},
+    },
+}
+
 _EVENT_MODEL_SCHEMA: Dict[str, Any] = {
     "description": "Top-level structure of every NDJSON line in the base event log.",
     "fields": {
@@ -299,8 +341,9 @@ _EVENT_MODEL_SCHEMA: Dict[str, Any] = {
         "signature": {
             "type": "string | null",
             "description": (
-                "Lowercase hex Ed25519 signature of the canonical bytes of the whole "
-                "event without its signature field ({header, body}); no pre-hash."
+                "'ed25519:<lowercase hex>' Ed25519 signature of the canonical bytes "
+                "of the whole event without its signature field ({header, body}); "
+                "no pre-hash.  The prefix MUST equal header.sig_alg."
             ),
         },
     },
@@ -353,8 +396,9 @@ _EVENT_LOG_LAYOUT: Dict[str, Any] = {
         "Within a file, events are in append order (top = oldest)."
     ),
     "chain_integrity": (
-        "Each event's header.prev_hash is the SHA-256 hex of the canonical bytes of "
-        "the *entire* preceding event (signature included).  The first event of a "
+        "Each event's header.prev_hash is the '<hash_alg>:<hex>' digest, under that "
+        "event's header.hash_alg, of the canonical bytes of the *entire* preceding "
+        "event (signature included).  The first event of a "
         "log has prev_hash=null, and no other event may.  "
         "The hash of the final event is the canonical unique identifier for the "
         "archive at that point in time: two archives are identical iff their last "
@@ -378,8 +422,17 @@ _EVENT_LOG_LAYOUT: Dict[str, Any] = {
             "({header, body}), signed directly (no pre-hash).  Signing the header "
             "binds each signature to its chain position, time and author."
         ),
-        "signature_encoding": "lowercase hex string",
+        "signature_encoding": "'ed25519:' followed by 128 lowercase hex characters",
     },
+    "algorithm_agility": (
+        "Every digest is written '<hash_alg>:<lowercase hex>' and every signature "
+        "'<sig_alg>:<lowercase hex>'.  Each event names its algorithms in "
+        "header.hash_alg and header.sig_alg; its prev_hash and signature prefixes "
+        "MUST equal them.  Unknown algorithms or mismatched prefixes make the "
+        "archive invalid.  Supported today: hash sha256, signature ed25519.  "
+        "Blob hashes keep the 'sha256:' prefix.  Transcription events let later "
+        "authors re-attest a log under newer algorithms."
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -387,9 +440,36 @@ _EVENT_LOG_LAYOUT: Dict[str, Any] = {
 # ---------------------------------------------------------------------------
 
 
+def collect_algorithms(events: Iterable[dict[str, Any]]) -> dict[str, list[str]]:
+    """Sorted hash and signature algorithm names appearing in ``events``."""
+    hashes: set[str] = set()
+    signatures: set[str] = set()
+    for event in events:
+        header, body = event.get("header", {}), event.get("body", {})
+        hashes.add(header.get("hash_alg") or "")
+        signatures.add(header.get("sig_alg") or "")
+        for value in (
+            header.get("prev_hash"),
+            body.get("blob_hash"),
+            body.get("file_hash"),
+            body.get("verified_head"),
+        ):
+            if isinstance(value, str):
+                hashes.add(algorithm_of(value))
+        hashes.add(body.get("verified_hash_alg") or "")
+        signatures.add(body.get("verified_sig_alg") or "")
+        if isinstance(event.get("signature"), str):
+            signatures.add(algorithm_of(event["signature"]))
+    return {
+        "hash": sorted(hashes - {""}),
+        "signature": sorted(signatures - {""}),
+    }
+
+
 def write_manifest(
     archive_root: str | Path,
     author_public_keys: Optional[list[str]] = None,
+    algorithms: Optional[dict[str, list[str]]] = None,
 ) -> Path:
     """Write (or overwrite) MANIFEST.json at the archive root.
 
@@ -399,6 +479,9 @@ def write_manifest(
         author_public_keys: List of 64-char hex Ed25519 public keys that are
             authorised to write events to this archive.  If omitted, the
             manifest is written with an empty authors list.
+        algorithms: ``{"hash": [...], "signature": [...]}`` listing every
+            algorithm used in the archive (see :func:`collect_algorithms`).
+            Defaults to empty lists.
 
     Returns:
         The path to the written MANIFEST.json file.
@@ -416,12 +499,14 @@ def write_manifest(
             {"public_key": key, "algorithm": "Ed25519"}
             for key in (author_public_keys or [])
         ],
+        "algorithms": algorithms or {"hash": [], "signature": []},
         "blob_store": _BLOB_STORE_LAYOUT,
         "event_log": _EVENT_LOG_LAYOUT,
         "schemas": {
             "EventHeader": _EVENT_HEADER_SCHEMA,
             "EventBody": _EVENT_BODY_SCHEMA,
             "MetaEventBody": _META_EVENT_BODY_SCHEMA,
+            "TranscriptionBody": _TRANSCRIPTION_BODY_SCHEMA,
             "EventModel": _EVENT_MODEL_SCHEMA,
             "MetaEventModel": _META_EVENT_MODEL_SCHEMA,
         },
