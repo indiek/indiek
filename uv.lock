@@ -82,36 +82,45 @@ wheels = [
 
 [[package]]
 name = "indiek"
-version = "0.10.0"
+version = "0.11.0"
 source = { editable = "." }
 dependencies = [
-    { name = "networkx" },
     { name = "pydantic" },
     { name = "pynacl" },
+]
+
+[package.optional-dependencies]
+cli = [
     { name = "python-dotenv" },
     { name = "rich" },
+]
+viz = [
+    { name = "networkx" },
+    { name = "pyvis" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "indiek", extra = ["cli"] },
     { name = "pytest" },
-    { name = "pyvis" },
     { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "networkx", specifier = ">=3.6.1" },
+    { name = "networkx", marker = "extra == 'viz'", specifier = ">=3.6.1" },
     { name = "pydantic" },
     { name = "pynacl" },
-    { name = "python-dotenv" },
-    { name = "rich", specifier = ">=15.0.0" },
+    { name = "python-dotenv", marker = "extra == 'cli'" },
+    { name = "pyvis", marker = "extra == 'viz'", specifier = ">=0.3.2" },
+    { name = "rich", marker = "extra == 'cli'", specifier = ">=15.0.0" },
 ]
+provides-extras = ["cli", "viz"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "indiek", extras = ["cli"] },
     { name = "pytest", specifier = ">=9.1.1" },
-    { name = "pyvis", specifier = ">=0.3.2" },
     { name = "ruff", specifier = ">=0.15.20" },
 ]
 
