@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from typing import Any, Dict, Iterable
+from typing import Any, Callable, Dict, Iterable
+from uuid import UUID
 
 from rich.console import Console
 from rich.table import Table
 
-from indiek.blob import ArchiveIndex
+from indiek import Archive
 
 
 def get_nested_value(data: Dict[str, Any], path: str) -> str:
@@ -41,7 +42,7 @@ def print_events_table(
     events: Iterable[Dict[str, Any]],
     columns_map: Dict[str, str],
     table_title: str,
-    id_mapping: Dict,
+    alias_of: Callable[[UUID], str],
 ) -> None:
     """
     Prints a table to stdout.
@@ -69,27 +70,16 @@ def print_events_table(
     for event in events:
         row_data = [get_nested_value(event, path) for path in columns_map.values()]
         if "node_id" in event["body"].keys():
-            row_data.append(id_mapping[event["body"]["node_id"]])
+            row_data.append(alias_of(UUID(event["body"]["node_id"])))
         elif "edge_id" in event["body"].keys():
-            row_data.append(id_mapping[event["body"]["edge_id"]])
+            row_data.append(alias_of(UUID(event["body"]["edge_id"])))
         table.add_row(*row_data)
 
     # 3. Render the table to stdout
     console.print(table)
 
 
-def run(archive_idx: ArchiveIndex, mini: bool):
-    # # TODO: use blob_resolver from blob.py
-    # for event_dict in archive.event_log:
-    #     pprint(event_dict)
-    #     event = EventModel(**event_dict)
-    #     binary_data = archive.blob_store.load_bin_blob(event.body.blob_hash)
-    #     decoded_data = archive.blob_store._bin_encode_decode(
-    #         binary_data, event.body.media_type, "decode"
-    #     )
-    #     print("DECODED DATA", decoded_data)
-    #     print("")
-    # Define exactly what columns you want to see and where they map to in the JSON
+def run(ik: Archive, mini: bool) -> None:
     low_columns = {
         "Timestamp": "header.timestamp",
         "Event Type": "body.event_type",
@@ -123,16 +113,7 @@ def run(archive_idx: ArchiveIndex, mini: bool):
             }
         )
 
+    print_events_table(ik.events("base"), low_columns, "Events Log", ik.index.alias_of)
     print_events_table(
-        archive_idx.arc.event_log,
-        low_columns,
-        "Events Log",
-        archive_idx.machine_to_human_id_,
-    )
-    # breakpoint()
-    print_events_table(
-        archive_idx.arc.meta_event_log,
-        high_columns,
-        "Meta Events Log",
-        archive_idx.machine_to_human_id_,
+        ik.events("meta"), high_columns, "Meta Events Log", ik.index.alias_of
     )

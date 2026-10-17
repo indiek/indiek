@@ -11,6 +11,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
 """
 
 import argparse
@@ -19,44 +20,42 @@ import os
 import sys
 from pathlib import Path
 
-import nacl
-from dotenv import load_dotenv
+from indiek import Archive, Author, MediaType, ResourceType
 
-import indiek.cfg as cfg
-import indiek.create_edge as create_edge
-import indiek.create_edge_tag as create_edge_tag
-import indiek.create_node as create_node
-import indiek.create_node_tag as create_node_tag
-import indiek.export as export
-import indiek.ingest as ingest
-import indiek.manifest as manifest_mod
-import indiek.read as read
-import indiek.set_tag as set_tag
-import indiek.supersede_edge as supersede_edge
-import indiek.supersede_node as supersede_node
-from indiek.blob import Archive, ArchiveIndex, InfraBlobStore, InfraEventLog
-from indiek.models import MediaType, ResourceType
-from indiek.signing import get_signing_key
+try:
+    from dotenv import dotenv_values, load_dotenv, set_key
+
+    import indiek.read as read
+except ModuleNotFoundError as exc:  # pragma: no cover - depends on install extras
+    raise SystemExit(
+        f"The ik CLI needs optional dependencies ({exc.name} is missing). "
+        "Install with: pip install 'indiek[cli]'"
+    ) from exc
+from indiek.ops.nodes import extract_content_and_mime
+
+logger = logging.getLogger(__name__)
+
+LOGGING_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+ARCHIVE_PATH_VAR = "IK_ARCHIVE_PATH"
+PRIVATE_KEY_VAR = "IK_AUTHOR_PRIVATE_KEY"
 
 
-def parse_comma_separated(value):
+def parse_comma_separated(value: str) -> list[str]:
     return value.split(",") if value else []
 
 
-def main():
-    logger = logging.getLogger()
-    logger.addHandler(logging.StreamHandler(sys.stdout))
-    logger.setLevel(logging.WARNING)  # set to logging.DEBUG if needed
-    # CLI ARGS
-    parser = argparse.ArgumentParser(
-        prog="ik", description="The IndieK CLI application"
-    )
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="ik", description="The IndieK CLI application")
     parser.add_argument("--dot-env", required=False, default=".env")
-    parser.add_argument("--logging-level", required=False, default="WARNING")
-    # Define subparsers for the commands
+    parser.add_argument(
+        "--logging-level",
+        type=str.upper,
+        choices=LOGGING_LEVELS,
+        default="WARNING",
+        help="Log level for stderr (case-insensitive, default: WARNING).",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # Command: $ ik create_node
     cfg_parser = subparsers.add_parser("config", help="Read or set config")
     cfg_parser.add_argument(
         "--set-archive-path",
@@ -64,6 +63,22 @@ def main():
         help="Path to archive you wish to write to your .env file",
         default=None,
     )
+
+    keygen_parser = subparsers.add_parser(
+        "keygen",
+        help=f"Generate a new Ed25519 author key ({PRIVATE_KEY_VAR}).",
+    )
+    keygen_parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Store the key in the --dot-env file instead of printing it.",
+    )
+    keygen_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="With --write, replace a key already present in the --dot-env file.",
+    )
+
     node_parser = subparsers.add_parser("create_node", help="Create a new node")
     node_parser.add_argument(
         "--content",
@@ -110,33 +125,21 @@ def main():
         "--content", required=True, help="Replacement text content"
     )
 
-    # Command: $ ik create_edge
     edge_parser = subparsers.add_parser("create_edge", help="Create a new edge")
+    edge_parser.add_argument("--content", required=True, help="Text content attached to edge")
     edge_parser.add_argument(
-        "--content", required=True, help="Text content attached to edge"
+        "--source-node", required=True, help="ID of source node (possibly human-friendly)"
     )
     edge_parser.add_argument(
-        "--source-node",
-        required=True,
-        help="ID of source node (possibly human-friendly)",
-    )
-    edge_parser.add_argument(
-        "--target-node",
-        required=True,
-        help="ID of target node (possibly human-friendly)",
+        "--target-node", required=True, help="ID of target node (possibly human-friendly)"
     )
 
-    edge_tag_parser = subparsers.add_parser(
-        "create_edge_tag", help="Create a tag for edges"
-    )
-    edge_tag_parser.add_argument("--name", required=True, help="Tag Name")
-    edge_tag_parser.add_argument("--description", required=True, help="Tag Description")
-
-    node_tag_parser = subparsers.add_parser(
-        "create_node_tag", help="Create a tag for nodes"
-    )
-    node_tag_parser.add_argument("--name", required=True, help="Tag Name")
-    node_tag_parser.add_argument("--description", required=True, help="Tag Description")
+    for kind in ("edge", "node"):
+        tag_kind_parser = subparsers.add_parser(
+            f"create_{kind}_tag", help=f"Create a tag for {kind}s"
+        )
+        tag_kind_parser.add_argument("--name", required=True, help="Tag Name")
+        tag_kind_parser.add_argument("--description", required=True, help="Tag Description")
 
     tag_parser = subparsers.add_parser("set_tag", help="Set a tag for an edge or node")
     tag_parser.add_argument(
@@ -150,10 +153,7 @@ def main():
         help="ID of edge or node to tag (possibly human friendly). This is the target node for the edge in the meta network.",
     )
 
-    # Command: $ ik read
     read_parser = subparsers.add_parser("read", help="Read data")
-    # breakpoint()
-    # read_parser.add_argument()
     read_parser.add_argument(
         "--mini",
         required=False,
@@ -161,7 +161,7 @@ def main():
         action="store_true",
         default=False,
     )
-    # Command: $ ik export
+
     export_parser = subparsers.add_parser(
         "export", help="Export the full archive to a GraphML file"
     )
@@ -178,7 +178,7 @@ def main():
 
     ingest_parser = subparsers.add_parser(
         "ingest",
-        help="""Ingest all files in a folder as nodes. Combine 
+        help="""Ingest all files in a folder as nodes. Combine
         with ik --logging-level CRITICAL to render the logger
           less verbose at stdout.""",
     )
@@ -195,7 +195,6 @@ def main():
         help="File defining edges to create.",
     )
 
-    # Command: $ ik manifest
     subparsers.add_parser(
         "manifest",
         help=(
@@ -204,167 +203,124 @@ def main():
             "and registers the current author's public key."
         ),
     )
+    return parser
 
-    # Parse the arguments from the terminal
-    args = parser.parse_args()
 
-    try:
-        logarg = args.logging_level
-    except AttributeError:
-        ...
+def _create_node(ik: Archive, args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    resource_type = ResourceType(args.resource_type)
+    media_type = MediaType(args.media_type) if args.media_type else None
+    title = args.title
+    if resource_type is ResourceType.MANAGED:
+        if not args.content:
+            parser.error("create_node --content is required for managed nodes")
+        # Known limitation: detection overrides --media-type for managed nodes.
+        content, media_type = extract_content_and_mime(args.content)
+    if title is None and args.content and Path(args.content).is_file():
+        title = Path(args.content).stem
+
+    if resource_type is ResourceType.URI:
+        if not args.uri:
+            raise ValueError("--uri is required when --resource-type uri")
+        node_id = ik.create_node(
+            resource_type=resource_type, uri=args.uri, title=title, media_type=media_type
+        )
+    elif resource_type is ResourceType.LOCAL_FILE:
+        if not args.path:
+            raise ValueError("--path is required when --resource-type local_file")
+        node_id = ik.create_node(resource_type=resource_type, path=args.path, title=title)
     else:
-        logger.setLevel(getattr(logging, logarg))
+        node_id = ik.create_node(content, media_type=media_type, title=title)
+    print(f"Node created: {node_id}")
 
-    # PARSE LOCAL CONFIG (doesn't override system's variables)
+
+def _configure_logging(level: str) -> None:
+    """Send every log record to stderr, keeping stdout for command output."""
+    root_logger = logging.getLogger()
+    root_logger.addHandler(logging.StreamHandler(sys.stderr))
+    root_logger.setLevel(level)
+
+
+def _keygen(args: argparse.Namespace) -> None:
+    author = Author.generate()
+    if not args.write:
+        print(f"{PRIVATE_KEY_VAR}={author.seed_hex}")
+        print(f"Public key: {author.public_key_hex}", file=sys.stderr)
+        return
+    dotenv_path = Path(args.dot_env)
+    if dotenv_values(dotenv_path).get(PRIVATE_KEY_VAR) and not args.force:
+        print(
+            f"{dotenv_path} already defines {PRIVATE_KEY_VAR}; "
+            "pass --force to replace it (the old key is lost).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    set_key(dotenv_path, PRIVATE_KEY_VAR, author.seed_hex)
+    dotenv_path.chmod(0o600)
+    print(f"{PRIVATE_KEY_VAR} written to {dotenv_path}", file=sys.stderr)
+    print(f"Public key: {author.public_key_hex}", file=sys.stderr)
+
+
+def _config(args: argparse.Namespace, archive_path: str | None) -> None:
+    if archive_path:
+        print(f"{ARCHIVE_PATH_VAR}={archive_path}")
+    else:
+        print(f"{ARCHIVE_PATH_VAR} is not set")
+    if args.set_archive_path:
+        set_key(args.dot_env, ARCHIVE_PATH_VAR, args.set_archive_path)
+        print(f"{ARCHIVE_PATH_VAR}={args.set_archive_path}")
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+    _configure_logging(args.logging_level)
+
+    # Local config never overrides real environment variables.
     load_dotenv(args.dot_env, override=False)
+    archive_path = os.getenv(ARCHIVE_PATH_VAR)
 
-    # HANDLE KEYS
-    # TODO: In a production env distinct authors may trigger distinct OS users -> file permissions
-    _private_key_hex: str = os.getenv("IK_AUTHOR_PRIVATE_KEY")
-
-    curr_signing_key: nacl.signing.SigningKey = get_signing_key(_private_key_hex)
-    curr_public_key: str = curr_signing_key.verify_key.encode(
-        nacl.encoding.HexEncoder
-    ).decode("utf-8")
-
-    # SETUP ARCHIVE
-    set_arc_path = os.getenv("IK_ARCHIVE_PATH")
-    logger.debug(f"{set_arc_path=}")
-    rootp = Path(set_arc_path)
-    infra_blob = InfraBlobStore(archive_root=rootp)
-    elog = InfraEventLog(rootp)
-    meta_log = InfraEventLog(os.path.join(rootp, "meta"))
-    archive = Archive(elog, meta_log, infra_blob)
-    archive_index = ArchiveIndex(archive)
-
-    # TODO: for the blob writing events; add a cleaning last step to erase written blob if event persistence failed
-
-    # Route to your scripts based on the command
+    # Bootstrap commands: no archive, no key.
+    if args.command == "keygen":
+        _keygen(args)
+        return
     if args.command == "config":
-        cfg.run(
-            arc_path=set_arc_path,
-            set_arc_path=args.set_archive_path,
-            dotenv_path=args.dot_env,
-        )
+        _config(args, archive_path)
+        return
 
-    elif args.command == "create_node":
-        resource_type = ResourceType(args.resource_type)
-        processed_content = None
-        inferred_media_type = MediaType(args.media_type) if args.media_type else None
-        if resource_type is ResourceType.MANAGED:
-            if not args.content:
-                parser.error("create_node --content is required for managed nodes")
-            processed_content, inferred_media_type = (
-                create_node.extract_content_and_mime(args.content)
-            )
-        node_title = args.title
-        if node_title is None and args.content and Path(args.content).is_file():
-            node_title = Path(args.content).stem
+    if not archive_path:
+        parser.error(f"{ARCHIVE_PATH_VAR} is not set (environment or --dot-env file)")
+    seed_hex = os.getenv(PRIVATE_KEY_VAR)
+    author = Author.from_seed_hex(seed_hex) if seed_hex else None  # None: read-only
+    logger.debug("archive_path=%s", archive_path)
+    ik = Archive.open(archive_path, author=author)
 
-        node_id = create_node.run(
-            node_content=processed_content,
-            node_title=node_title,
-            curr_public_key=curr_public_key,
-            curr_signing_key=curr_signing_key,
-            archive_idx=archive_index,
-            media_type=inferred_media_type,
-            resource_type=resource_type,
-            uri=args.uri,
-            path=args.path,
-        )
-        print(f"Node created: {node_id}")
-
-    elif args.command == "supersede_node":
-        node_id = supersede_node.run(
-            node_id=args.node_id,
-            content=args.content,
-            title=args.title,
-            curr_public_key=curr_public_key,
-            curr_signing_key=curr_signing_key,
-            archive_idx=archive_index,
-        )
-        print(f"Node superseded: {node_id}")
-
-    elif args.command == "supersede_edge":
-        edge_id = supersede_edge.run(
-            edge_id=args.edge_id,
-            content=args.content,
-            curr_public_key=curr_public_key,
-            curr_signing_key=curr_signing_key,
-            archive_idx=archive_index,
-        )
-        print(f"Edge superseded: {edge_id}")
-
-    elif args.command == "create_edge":
-        node_id = create_edge.run(
-            args.content,
-            args.source_node,
-            args.target_node,
-            curr_public_key,
-            curr_signing_key,
-            archive_index,
-        )
-        print(f"Edge created: {node_id}")
-    elif args.command == "create_edge_tag":
-        node_id = create_edge_tag.run(
-            tag_name=args.name,
-            tag_description=args.description,
-            curr_public_key=curr_public_key,
-            curr_signing_key=curr_signing_key,
-            archive_index=archive_index,
-        )
-        print(f"Meta node created: {node_id}")
-    elif args.command == "create_node_tag":
-        create_node_tag.run(
-            tag_name=args.name,
-            tag_description=args.description,
-            curr_public_key=curr_public_key,
-            curr_signing_key=curr_signing_key,
-            archive_idx=archive_index,
-        )
-    elif args.command == "set_tag":
-        set_tag.run(
-            edge_source=args.tag,
-            underlying_target=args.id,
-            curr_public_key=curr_public_key,
-            curr_signing_key=curr_signing_key,
-            archive_idx=archive_index,
-        )
-    elif args.command == "read":
-        read.run(archive_index, args.mini)
-    elif args.command == "export":
-        export.run(archive_index, args.output_path, args.tags)
-    elif args.command == "ingest":
-        if args.input_folder:
-            file_paths = [
-                os.path.join(args.input_folder, fpath)
-                for fpath in os.listdir(args.input_folder)
-            ]
-            file_paths = sorted(file_paths)
-            logger.debug(file_paths)
-        else:
-            file_paths = []
-
-        if args.edges_def_file:
-            with open(args.edges_def_file, "rt", encoding="utf-8") as f:
-                edge_defs = f.readlines()
-        else:
-            edge_defs = []
-
-        ingest.run(
-            archive_idx=archive_index,
-            curr_public_key=curr_public_key,
-            curr_signing_key=curr_signing_key,
-            file_paths=file_paths,
-            edge_definitions=edge_defs,
-        )
-
-    elif args.command == "manifest":
-        manifest_path = manifest_mod.generate_manifest(
-            archive_root=rootp,
-            author_public_keys=[curr_public_key],
-        )
-        print(f"MANIFEST written to: {manifest_path}")
+    match args.command:
+        case "create_node":
+            _create_node(ik, args, parser)
+        case "supersede_node":
+            node_id = ik.supersede_node(args.node_id, args.content, title=args.title)
+            print(f"Node superseded: {node_id}")
+        case "supersede_edge":
+            edge_id = ik.supersede_edge(args.edge_id, args.content)
+            print(f"Edge superseded: {edge_id}")
+        case "create_edge":
+            edge_id = ik.create_edge(args.source_node, args.target_node, args.content)
+            print(f"Edge created: {edge_id}")
+        case "create_edge_tag":
+            tag_id = ik.create_tag(args.name, args.description, kind="edge")
+            print(f"Meta node created: {tag_id}")
+        case "create_node_tag":
+            ik.create_tag(args.name, args.description, kind="node")
+        case "set_tag":
+            ik.set_tag(args.tag, args.id)
+        case "read":
+            read.run(ik, args.mini)
+        case "export":
+            ik.export_graphml(args.output_path, args.tags)
+        case "ingest":
+            ik.ingest(input_folder=args.input_folder, edges_file=args.edges_def_file)
+        case "manifest":
+            print(f"MANIFEST written to: {ik.write_manifest()}")
 
 
 if __name__ == "__main__":

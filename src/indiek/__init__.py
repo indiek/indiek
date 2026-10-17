@@ -11,4 +11,54 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+---
+
+IndieK: a signed, append-only knowledge-graph archive format and its SDK.
+
+    from indiek import Archive, Author
+
+    author = Author.generate()            # or Author.from_seed_hex(seed_hex)
+    ik = Archive.open("my-archive", author=author)
+    node = ik.create_node("Gödel's incompleteness theorem")
+    print(ik.index.alias_of(node), ik.head)
 """
+
+from importlib.metadata import PackageNotFoundError, version
+
+from indiek.core.author import Author
+from indiek.core.errors import (
+    ArchiveRuleError,
+    AuthorshipError,
+    IndieKError,
+    IntegrityError,
+    UnknownItemError,
+)
+from indiek.core.index import ArchiveIndex, IndexedItem, ItemKind
+from indiek.core.models import EventType, MediaType, MetaEventType, ResourceType
+from indiek.ops.ingest import IngestResult
+from indiek.sdk import Archive
+
+try:
+    __version__ = version("indiek")
+except PackageNotFoundError:  # running from a source tree without metadata
+    __version__ = "0+unknown"
+
+__all__ = [
+    "Archive",
+    "ArchiveIndex",
+    "ArchiveRuleError",
+    "Author",
+    "AuthorshipError",
+    "EventType",
+    "IndexedItem",
+    "IndieKError",
+    "IngestResult",
+    "IntegrityError",
+    "ItemKind",
+    "MediaType",
+    "MetaEventType",
+    "ResourceType",
+    "UnknownItemError",
+    "__version__",
+]

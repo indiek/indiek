@@ -32,7 +32,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from indiek.models import EVENT_FORMAT_VERSION
+from indiek.core.models import EVENT_FORMAT_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -375,7 +375,7 @@ _EVENT_LOG_LAYOUT: Dict[str, Any] = {
 # ---------------------------------------------------------------------------
 
 
-def generate_manifest(
+def write_manifest(
     archive_root: str | Path,
     author_public_keys: Optional[list[str]] = None,
 ) -> Path:
@@ -422,3 +422,4 @@ def generate_manifest(
     )
     logger.info(f"MANIFEST written to {manifest_path}")
     return manifest_path
+

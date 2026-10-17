@@ -143,7 +143,7 @@ def test_tag_kind_must_match_target_kind(
     _make_tag(run_cli, kind=tag_kind)  # m1
 
     with (
-        caplog.at_level(logging.WARNING, logger="indiek.set_tag"),
+        caplog.at_level(logging.WARNING, logger="indiek.ops.tags"),
         pytest.raises(ValueError, match=message),
     ):
         run_cli("set_tag", "--tag", "m1", "--id", target)
@@ -159,7 +159,7 @@ def test_tag_kind_must_match_target_kind(
     warnings = [
         record
         for record in caplog.records
-        if record.name == "indiek.set_tag" and record.levelno == logging.WARNING
+        if record.name == "indiek.ops.tags" and record.levelno == logging.WARNING
     ]
     assert len(warnings) == 1
     assert bodies[1]["node_id"] in warnings[0].getMessage()
@@ -178,7 +178,7 @@ def test_no_warning_when_rejected_target_already_has_representation(
     before = len(meta_events())
 
     with (
-        caplog.at_level(logging.WARNING, logger="indiek.set_tag"),
+        caplog.at_level(logging.WARNING, logger="indiek.ops.tags"),
         pytest.raises(ValueError, match="An edge tag should point to an edge"),
     ):
         run_cli("set_tag", "--tag", "m4", "--id", "e1")
@@ -187,7 +187,7 @@ def test_no_warning_when_rejected_target_already_has_representation(
     assert not [
         record
         for record in caplog.records
-        if record.name == "indiek.set_tag" and record.levelno == logging.WARNING
+        if record.name == "indiek.ops.tags" and record.levelno == logging.WARNING
     ]
 
 

@@ -11,30 +11,33 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-"""
+
+---
+
+Export the base network as GraphML."""
+
+from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from typing import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
+from pathlib import Path
+from typing import Any
 from uuid import UUID
 from xml.dom import minidom
 
-from indiek.blob import ArchiveIndex
-from indiek.models import MediaType
+from indiek.core.index import ArchiveIndex
+from indiek.core.models import MediaType
 
 
-def build_graphml_tree(events: Iterable, blob_resolver: Callable) -> ET.ElementTree:
+def build_graphml_tree(
+    events: Iterable[dict[str, Any]], blob_resolver: Callable[[str], str]
+) -> ET.ElementTree:
+    """Build a directed GraphML tree from base-network event dicts.
+
+    Only ``create_node`` / ``create_edge`` events become elements;
+    ``blob_resolver`` maps a ``text/plain`` blob hash to its label text.
     """
-    Parses a sequence of ik events and builds a GraphML XML tree.
-
-    Args:
-        events: An iterable of parsed event dictionaries (from events.ndjson).
-        blob_resolver:
-
-    Returns:
-        An xml.etree.ElementTree object representing the graph.
-    """
-    # 1. Initialize root and namespaces
-    # GraphML requires specific namespaces to be valid for standard visualizers
+    # TODO(CLIPYPI:EXPORT-SUPERSEDES): project supersedes, drop dangling edges
     root = ET.Element(
         "graphml",
         attrib={
@@ -43,21 +46,16 @@ def build_graphml_tree(events: Iterable, blob_resolver: Callable) -> ET.ElementT
             "xsi:schemaLocation": "http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd",
         },
     )
-
-    # 2. Define Data Keys (The Schema of the GraphML)
     keys = [
-        # Node attributes
         ("node_author", "node", "author", "string"),
         ("node_timestamp", "node", "timestamp", "string"),
         ("node_hash", "node", "blob_hash", "string"),
-        ("node_label", "node", "label", "string"),  # For the resolved text content
-        # Edge attributes
+        ("node_label", "node", "label", "string"),
         ("edge_author", "edge", "author", "string"),
         ("edge_timestamp", "edge", "timestamp", "string"),
         ("edge_hash", "edge", "blob_hash", "string"),
-        ("edge_label", "edge", "label", "string"),  # For the resolved text content
+        ("edge_label", "edge", "label", "string"),
     ]
-
     for k_id, k_for, k_name, k_type in keys:
         ET.SubElement(
             root,
@@ -65,53 +63,36 @@ def build_graphml_tree(events: Iterable, blob_resolver: Callable) -> ET.ElementT
             id=k_id,
             **{"for": k_for, "attr.name": k_name, "attr.type": k_type},
         )
+    graph = ET.SubElement(root, "graph", id="ik_knowledge_graph", edgedefault="directed")
 
-    # 3. Initialize the Directed Graph
-    graph = ET.SubElement(
-        root, "graph", id="ik_knowledge_graph", edgedefault="directed"
-    )
-
-    # 4. Process Events Append-Only Log
     for event in events:
         header = event.get("header", {})
         body = event.get("body", {})
         event_type = body.get("event_type")
-
-        # Extract metadata common to all events
         author = header.get("author", "")
         timestamp = header.get("timestamp", "")
         blob_hash = body.get("blob_hash", "")
-        media_type = body.get("media_type", "")
-
-        # Resolve text content if a resolver is provided
         label_text = ""
-
-        if blob_hash and media_type == MediaType.TEXT_PLAIN.value:
-            label_text = blob_resolver(blob_hash, media_type)
+        if blob_hash and body.get("media_type", "") == MediaType.TEXT_PLAIN.value:
+            label_text = blob_resolver(blob_hash)
 
         if event_type == "create_node":
             node_id = body.get("node_id")
             if not node_id:
                 continue
-
             node = ET.SubElement(graph, "node", id=node_id)
             ET.SubElement(node, "data", key="node_author").text = author
             ET.SubElement(node, "data", key="node_timestamp").text = timestamp
             ET.SubElement(node, "data", key="node_hash").text = blob_hash
             if label_text:
                 ET.SubElement(node, "data", key="node_label").text = label_text
-
         elif event_type == "create_edge":
             edge_id = body.get("edge_id")
             source = body.get("source_node")
             target = body.get("target_node")
-
             if not all([edge_id, source, target]):
                 continue
-
-            edge = ET.SubElement(
-                graph, "edge", id=edge_id, source=source, target=target
-            )
+            edge = ET.SubElement(graph, "edge", id=edge_id, source=source, target=target)
             ET.SubElement(edge, "data", key="edge_author").text = author
             ET.SubElement(edge, "data", key="edge_timestamp").text = timestamp
             ET.SubElement(edge, "data", key="edge_hash").text = blob_hash
@@ -121,43 +102,29 @@ def build_graphml_tree(events: Iterable, blob_resolver: Callable) -> ET.ElementT
     return ET.ElementTree(root)
 
 
-def run(archive_idx: ArchiveIndex, output_path: str, tags: Sequence[str]):
+def export_graphml(
+    index: ArchiveIndex,
+    output_path: str | Path,
+    tags: Sequence[str | UUID] = (),
+) -> Path:
+    """Write the base network to ``output_path`` (overwritten) as pretty GraphML.
+
+    With ``tags``, keep only items carrying at least one of them (OR); nodes
+    and edges are filtered independently.
     """
-    Builds the GraphML and writes it to disk with pretty-printing.
-    """
-    tags_uuid = set()
-    for human_tag in tags:
-        try:
-            as_uuid = UUID(human_tag)
-        except ValueError:
-            as_uuid = UUID(archive_idx.human_to_machine_id_[human_tag])
-        tags_uuid.update({as_uuid})
+    wanted = {index.resolve(tag) for tag in tags}
 
-    def tag_filter(event_dict):
-        try:
-            item_id = UUID(event_dict["body"]["node_id"])
-        except KeyError:
-            item_id = UUID(event_dict["body"]["edge_id"])
-        tags_from_info = archive_idx.id_info_[item_id]["tags"]
-        return bool(tags_from_info.intersection(tags_uuid))
+    def has_wanted_tag(event: dict[str, Any]) -> bool:
+        body = event["body"]
+        item_id = UUID(body["node_id"] if "node_id" in body else body["edge_id"])
+        return bool(index.items[item_id].tags & wanted)
 
-    if tags_uuid:
-        filtered_event_log = filter(tag_filter, archive_idx.arc.event_log)
-    else:
-        filtered_event_log = archive_idx.arc.event_log
-    tree = build_graphml_tree(
-        filtered_event_log, archive_idx.arc.blob_store.blob_resolver
-    )
-    # TODO: implement sticky nodes to dangling edges
-    root = tree.getroot()
-
-    # Generate raw string
-    raw_xml = ET.tostring(root, encoding="utf-8")
-
-    # Pretty print using minidom for human readability
-    parsed_xml = minidom.parseString(raw_xml)
-    pretty_xml = parsed_xml.toprettyxml(indent="  ")
-
-    # Write to file
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(pretty_xml)
+    events: Iterable[dict[str, Any]] = index.store.base_log
+    if wanted:
+        events = filter(has_wanted_tag, events)
+    tree = build_graphml_tree(events, index.store.blobs.get_text)
+    raw_xml = ET.tostring(tree.getroot(), encoding="utf-8")
+    pretty_xml = minidom.parseString(raw_xml).toprettyxml(indent="  ")
+    path = Path(output_path)
+    path.write_text(pretty_xml, encoding="utf-8")
+    return path

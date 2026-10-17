@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -15,24 +16,24 @@ def _creates(events: list[dict]) -> list[dict]:
     return [e for e in events if e["body"]["event_type"].startswith(("create", "set"))]
 
 
-def test_lowercase_logging_level_crashes(archive_root, author_seed_hex, monkeypatch):
+def test_lowercase_logging_level_is_accepted(archive_root, author_seed_hex, monkeypatch):
     monkeypatch.setenv("IK_ARCHIVE_PATH", str(archive_root))
     monkeypatch.setenv("IK_AUTHOR_PRIVATE_KEY", author_seed_hex)
     monkeypatch.setattr("sys.argv", ["ik", "--logging-level", "debug", "read"])
-    with pytest.raises(TypeError):
-        ik_cli.main()
+    ik_cli.main()
+    assert logging.getLogger().level == logging.DEBUG
 
 
-def test_config_needs_archive_path(archive_root, author_seed_hex, monkeypatch):
+def test_config_bootstraps_without_archive_path_or_key(archive_root, monkeypatch):
     monkeypatch.delenv("IK_ARCHIVE_PATH", raising=False)
-    monkeypatch.setenv("IK_AUTHOR_PRIVATE_KEY", author_seed_hex)
+    monkeypatch.delenv("IK_AUTHOR_PRIVATE_KEY", raising=False)
     dotenv = archive_root.parent / "cfg.env"
     monkeypatch.setattr(
         "sys.argv",
         ["ik", "--dot-env", str(dotenv), "config", "--set-archive-path", "/x"],
     )
-    with pytest.raises(TypeError):
-        ik_cli.main()
+    ik_cli.main()
+    assert dotenv.read_text(encoding="utf-8").strip() == "IK_ARCHIVE_PATH='/x'"
 
 
 def test_config_writes_quoted_path(archive_root, author_seed_hex, monkeypatch):

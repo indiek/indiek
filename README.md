@@ -1,11 +1,13 @@
 See [indiek.org](https://indiek.org) for broader context and documentation on the IndieK project.
 # `ik` CLI — API Reference
 
-Reference for all twelve `ik` subcommands.
+Reference for all thirteen `ik` subcommands. The Python SDK behind them
+(`import indiek`) is documented in the docstrings of `indiek.Archive`.
 
 | Command | Purpose | Prints on success |
 | --- | --- | --- |
-| `config` | Show / set `IK_ARCHIVE_PATH` in the dotenv file | log lines (WARNING) |
+| `config` | Show / set `IK_ARCHIVE_PATH` in the dotenv file | `IK_ARCHIVE_PATH=<value>` |
+| `keygen` | Generate an Ed25519 author key | `IK_AUTHOR_PRIVATE_KEY=<seed>` (nothing with `--write`) |
 | `create_node` | Add a base-network node (`managed`, `uri`, `local_file`) | `Node created: <uuid>` |
 | `create_edge` | Add a directed, content-carrying edge between two nodes | `Edge created: <uuid>` |
 | `supersede_node` | Replace a node's content (append-only) | `Node superseded: <uuid>` |
@@ -18,6 +20,16 @@ Reference for all twelve `ik` subcommands.
 | `ingest` | Bulk-create nodes from a folder and edges from a file | nothing |
 | `manifest` | Write `MANIFEST.json` at the archive root | `MANIFEST written to: <path>` |
 
+## Install
+
+```bash
+uv tool install 'indiek[cli]'   # the ik command (adds rich + python-dotenv)
+uv add indiek                   # the SDK only
+```
+
+Until the PyPI release, install from a checkout of this folder:
+`uv tool install --editable '.[cli]'`.
+
 ## Invocation shape
 
 ```
@@ -29,10 +41,10 @@ Global flags apply to every command and must precede the subcommand.
 | Flag | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `--dot-env` | no | `.env` | Dotenv file to load. Loaded with `override=False`, so real environment variables win. |
-| `--logging-level` | no | `WARNING` | An **uppercase** `logging` level name: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Lowercase names (e.g. `debug`) crash with `TypeError`; unknown names with `AttributeError`. |
+| `--logging-level` | no | `WARNING` | A `logging` level name, case-insensitive: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Any other name exits with status 2. |
 
-All log output — including every `WARNING` — is written to **stdout**, not
-stderr, so it is interleaved with command output.
+All log output is written to **stderr**. Stdout carries only command output
+(printed IDs, tables, `config` / `keygen` lines), so it is safe to pipe.
 
 ### Environment
 
@@ -41,20 +53,23 @@ stderr, so it is interleaved with command output.
 | `IK_ARCHIVE_PATH`       | Root directory of the archive.                                             |
 | `IK_AUTHOR_PRIVATE_KEY` | Current author's Ed25519 private key: a 32-byte seed as 64 hex characters. |
 
-Both are required by **every** command, including `config`, `read`, `export`
-and `manifest`. A non-hex key raises a `ValueError` from `bytes.fromhex`; a key
-of the wrong length raises
-`ValueError: Invalid key length. Ed25519 private key must be 32 bytes.`
-There is no key-generation command; one way to make a seed:
+Which commands need what:
 
-```bash
-python -c "import secrets; print(secrets.token_hex(32))"
-```
+- `config` and `keygen` need neither variable.
+- `read`, `export` and `manifest` need only `IK_ARCHIVE_PATH`. Without a key the
+  archive is opened read-only and `manifest` lists no author.
+- Every other command also needs the key; without it the write fails with
+  `AuthorshipError: An author is required to write to an archive`.
+
+A missing `IK_ARCHIVE_PATH` exits with status 2; a leading `~` is expanded. A
+non-hex key raises a `ValueError` from `bytes.fromhex`; a key of the wrong
+length raises `ValueError: Invalid key length. Ed25519 private key must be 32 bytes.`
+Generate a key with [`ik keygen`](#ik-keygen).
 
 ### Integrity verification
 
-Every invocation walks and verifies the whole event log **and** the whole meta
-event log before dispatching the command. There is no way to skip verification.
+Every command that opens the archive (all but `config` and `keygen`) walks and
+verifies the whole event log **and** the whole meta event log before running. There is no way to skip verification.
 Verification raises `IntegrityError` with one of three messages:
 
 - `Chain broken!` — a `header.prev_hash` does not match the canonical hash of the preceding event.
@@ -68,8 +83,8 @@ Building the index then raises `IntegrityError` if the logs are inconsistent:
 - `Supersede edge events cannot change endpoints`
 - `Tag assignment references an unknown representation`
 
-At `WARNING` level (the default) a successful verification prints
-`ARCHIVE INTEGRITY VERIFIED` to stdout.
+A successful verification logs `ARCHIVE INTEGRITY VERIFIED` at `INFO`, on
+stderr (visible with `--logging-level info`).
 
 ## Identifiers
 
@@ -86,9 +101,8 @@ human-friendly aliases by replaying the logs in order:
   of the existing one.
 
 Any flag documented as accepting an ID accepts either a UUID string or a
-human-friendly alias. Resolution is a plain dictionary lookup: an unknown alias
-is passed through to `UUID(...)` and fails with a `ValueError` about a badly
-formed hexadecimal UUID string.
+human-friendly alias. A string that is neither a known alias nor a UUID raises
+`UnknownItemError: Unknown ID or alias '<ref>'` (a `ValueError`).
 
 ---
 
@@ -190,20 +204,15 @@ Semantics and limits:
 - The content is **always** stored as `text/plain; charset=utf-8`. There is no
   media-type flag, and unlike `create_node --content`, a value that happens to
   be a file path is stored verbatim as text — the file is not read.
-- Both endpoints are resolved through the alias map, then parsed as UUIDs. An
-  alias that is not in the map is passed straight to `UUID(...)` and fails with
-  a `ValueError` about a badly formed hexadecimal UUID string.
-- Both endpoints **are** checked for existence at write time. The whole base
-  event log is scanned and each endpoint must appear as the `node_id` of some
-  event, otherwise the command raises
-  `ValueError: SOURCE NODE <uuid> NOT FOUND IN ARCHIVE` or
-  `ValueError: TARGET NODE <uuid> NOT FOUND IN ARCHIVE`.
-- Because the scan only matches `node_id`, an edge whose source or target is
-  itself an **edge** is rejected: edges may only connect nodes.
-- The blob for the edge content is written to the blob store *before* the
-  endpoints are validated, so a failed `create_edge` can leave an unreferenced
-  blob behind. This is harmless — integrity verification ignores unreferenced
-  blobs — but it is not cleaned up. 
+- Both endpoints are resolved as aliases or UUIDs; an unknown alias raises
+  `UnknownItemError: Unknown ID or alias '<ref>'`.
+- Both endpoints **are** checked at write time: each must be an existing
+  base-network **node**, otherwise the command raises
+  `UnknownItemError: SOURCE NODE <uuid> NOT FOUND IN ARCHIVE` or
+  `UnknownItemError: TARGET NODE <uuid> NOT FOUND IN ARCHIVE`. Edges and tags
+  can never be endpoints.
+- Endpoints are validated *before* the content blob is written, so a failed
+  `create_edge` writes nothing.
 - Edges are directed. Endpoints are immutable: `supersede_edge` may replace an
   edge's content but the index rejects any attempt to change `source_node` or
   `target_node`.
@@ -403,7 +412,7 @@ Semantics and limits:
 - `--tags` keeps an item if it carries **any** of the listed tags (OR). Nodes
   and edges are filtered independently, so an exported edge may point at a node
   that was filtered out.
-- An unknown alias in `--tags` raises `KeyError`.
+- An unknown alias in `--tags` raises `UnknownItemError`.
 - Prints nothing on success.
 
 ```bash
@@ -464,22 +473,43 @@ ik manifest
 ## `ik config`
 
 Shows, and optionally sets, `IK_ARCHIVE_PATH` in the dotenv file given by
-`--dot-env`.
+`--dot-env`. It needs neither a key nor an existing archive, so it can
+bootstrap a fresh setup.
 
 | Flag | Required | Meaning |
 | --- | --- | --- |
 | `--set-archive-path` | no | New archive path to write into the dotenv file. |
 
-- Logs `Original IK_ARCHIVE_PATH=<value>` and, when setting,
-  `New IK_ARCHIVE_PATH=<path>` — both at `WARNING`, hence on stdout.
+- Prints `IK_ARCHIVE_PATH=<value>` (from the environment or the dotenv file) or
+  `IK_ARCHIVE_PATH is not set`; when setting, then prints `IK_ARCHIVE_PATH=<path>`.
 - The value is written with `dotenv.set_key`, which wraps it in single quotes.
-- Only `IK_ARCHIVE_PATH` can be set; the key must be managed by hand.
-- Like every command, it needs a valid key and archive path **before** it runs:
-  with `IK_ARCHIVE_PATH` unset it crashes with `TypeError`, so it cannot
-  bootstrap a fresh setup — write the dotenv by hand first.
+- Only `IK_ARCHIVE_PATH` can be set here; use `ik keygen --write` for the key.
 
 ```bash
 ik --dot-env .env config --set-archive-path ~/archives/mykg
+```
+
+---
+
+## `ik keygen`
+
+Generates a fresh Ed25519 author key. Needs neither a key nor an archive.
+
+| Flag | Required | Meaning |
+| --- | --- | --- |
+| `--write` | no | Store the seed in the `--dot-env` file (file mode set to `600`) instead of printing it. |
+| `--force` | no | With `--write`, replace an `IK_AUTHOR_PRIVATE_KEY` already in that file. The old key is lost. |
+
+- Without `--write`: prints `IK_AUTHOR_PRIVATE_KEY=<64 hex chars>` on stdout,
+  ready to append to a dotenv file, and `Public key: <hex>` on stderr.
+- With `--write`: prints nothing on stdout; stderr names the file and the
+  public key. If the file already defines the key and `--force` is absent, it
+  exits with status 1 and leaves the file untouched.
+- The seed is the only secret: never commit it. The public key is what appears
+  as `header.author` in events and in `MANIFEST.json`.
+
+```bash
+ik --dot-env .env keygen --write
 ```
 
 ---
@@ -490,10 +520,9 @@ One session exercising every command. Comments show the alias each step
 allocates in a fresh archive.
 
 ```bash
-# 1. Setup — the key and archive path must exist before any ik command runs
-mkdir -p ~/archives/demo && cd ~/kg-demo   # a folder holding the sample files below
-printf "IK_AUTHOR_PRIVATE_KEY=%s\nIK_ARCHIVE_PATH=%s\n" \
-  "$(python -c 'import secrets; print(secrets.token_hex(32))')" ~/archives/demo > .env
+# 1. Setup — writes the key and the archive path into ./.env
+cd ~/kg-demo   # a folder holding the sample files below
+ik keygen --write
 ik config --set-archive-path ~/archives/demo
 
 # 2. Managed nodes: inline text, text/plain, text/markdown, image/png

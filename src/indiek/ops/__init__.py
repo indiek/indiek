@@ -11,19 +11,11 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-"""
 
-import logging
+---
 
-from dotenv import set_key
-
-logger = logging.getLogger(__name__)
-# TODO: Define string "IK_ARCHIVE_PATH" globally for whole library here
-
-
-def run(arc_path: str, set_arc_path: str | None, dotenv_path: str):
-    logger.warning(f"Original IK_ARCHIVE_PATH={arc_path}")
-    if set_arc_path:
-        # TODO: see if the single-quoting of str from set_key can be controlled
-        set_key(dotenv_path, "IK_ARCHIVE_PATH", set_arc_path)
-        logger.warning(f"New IK_ARCHIVE_PATH={set_arc_path}")
+Write operations of the IndieK SDK.  Every operation takes a fresh
+:class:`~indiek.core.index.ArchiveIndex` and an
+:class:`~indiek.core.author.Author`, appends events, returns a typed result
+and never prints.  The index is stale after a write; rebuild it (the
+:mod:`indiek.sdk` facade does this for you)."""
