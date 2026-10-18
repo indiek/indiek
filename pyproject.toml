@@ -11,6 +11,7 @@ dependencies = [
     "pynacl",
     "pydantic",
 ]
+readme = "README.md"
 
 [project.optional-dependencies]
 cli = [
