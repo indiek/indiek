@@ -4,6 +4,25 @@ All notable changes to the `indiek` package are documented here.
 
 ## Unreleased
 
+## 0.16.0 - 2026-10-17
+
+### Added
+- (VERIFY-LEVELS-CACHE) `indiek.VerificationLevel` (`NONE`, `INCREMENTAL`, `FULL`; owner decision D13, the plan's `HEAD_ONLY` dropped since building the index reads every line anyway). `Archive.open(path, author=None, *, verify="incremental", trusted_seal=None, cache_dir=None)`, `Archive.verification`, `Archive.refresh(level=None)`.
+- (VERIFY-LEVELS-CACHE) Trust model (owner decisions 2026-10-17): verification work is skipped only on the basis of (a) the local cache of what this machine already verified, or (b) a seal hash the reader supplies (`trusted_seal`, `--trust-seal HASH`), never (c) a seal merely found in the archive. Every hash link, anchor, transcription and seal is always recomputed; only Ed25519 checks (and, via the cache, blob re-hashing) are skipped; any mismatch falls back to a full pass with the same error a `FULL` check reports.
+- (VERIFY-LEVELS-CACHE) `indiek.core.cache`: the cache lives OUTSIDE the archive in the user's cache directory (`~/Library/Caches/indiek`, `$XDG_CACHE_HOME/indiek` or `~/.cache/indiek`, `%LOCALAPPDATA%\indiek\Cache`; override `IK_CACHE_DIR`), one `state.json` per archive holding verified chain tips and blob `(size, mtime_ns)` (D14, D15). Written atomically, ignored when corrupt.
+- (VERIFY-LEVELS-CACHE) `Archive.fsck() -> indiek.FsckReport` and `ik fsck` (counts, heads, seals, transcriptions, blob census with deletable unreferenced paths, representations without a tag). CLI global flags `--verify {none,incremental,full}` and `--trust-seal HASH`.
+- (VERIFY-LEVELS-CACHE) `BlobStore.stat()`, `core.archive.BlobChecker`, `scan_chain()`, `verify_chain(..., trusted=, checker=)`.
+- (VERIFY-LEVELS-CACHE) README: "Verification levels and the trust model" (levels with measured timings, what may be skipped and why, the Alice/Mallory example, cache location, caveats, verify-on-read), `ik fsck` section, new flags and `IK_CACHE_DIR`.
+- (VERIFY-LEVELS-CACHE) Tests: `tests/sdk/test_verify_levels.py` (cache location, skipping counted by signature checks, stale/corrupt/planted caches, bit rot caught on read, trusted seal, a seal in the archive never trusted, `NONE`, forced `FULL`, `fsck`) + 4 CLI tests; autouse fixture isolating `IK_CACHE_DIR` per test; pytest marker `slow` (10,000-event test, `uv run pytest -m slow`). Suite: 368 passed (+1 slow).
+
+### Breaking
+- (VERIFY-LEVELS-CACHE) The SDK and CLI default is now `INCREMENTAL` (was: everything on every open). `verify()`, `fsck()`, `seal()`, `ingest()`, `export_graphml()`, `write_manifest()` and their CLI commands always verify `FULL` first. An archive opened with `verify="none"` refuses writes (`ArchiveRuleError`).
+- (VERIFY-LEVELS-CACHE) `BlobStore.get()` / `get_text()` verify on read (D16): a missing or altered blob raises `IntegrityError("File corrupted or missing! (blob …)")` (a missing blob used to raise `FileNotFoundError`).
+- (VERIFY-LEVELS-CACHE) `ArchiveStore(…, *, level=FULL, trusted_seal=None, cache_dir=None)` / `ArchiveStore.open(root, *, …)`; `reopen(level=None)`. The core still reads no environment variable (the facade resolves the cache directory).
+
+### Changed
+- (VERIFY-LEVELS-CACHE) The INFO log line is now `ARCHIVE INTEGRITY VERIFIED (<level>)`.
+
 ## 0.15.0 - 2026-10-17
 
 ### Added

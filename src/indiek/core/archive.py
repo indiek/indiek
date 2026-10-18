@@ -19,15 +19,25 @@ Hash-chain verification and the verified view of an archive on disk."""
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Self
 
+from indiek.core.cache import (
+    VerificationCache,
+    VerifiedTip,
+    load_cache,
+    save_cache,
+)
 from indiek.core.canonical import (
+    DEFAULT_HASH_ALG,
     HASH_ALGORITHMS,
     SIGNATURE_ALGORITHMS,
     algorithm_of,
+    canonical_bytes,
+    digest,
     event_hash,
 )
 from indiek.core.errors import IntegrityError
@@ -54,6 +64,10 @@ class ChainState:
     sig_alg: str | None = None
     hashes: tuple[str, ...] = field(default=(), compare=False, repr=False)
     blobs: tuple[str | None, ...] = field(default=(), compare=False, repr=False)
+
+
+def _verified_tip(state: ChainState) -> VerifiedTip | None:
+    return VerifiedTip(state.count, state.head) if state.head else None
 
 
 def _check_algorithms(event: dict[str, Any]) -> tuple[str, str]:
@@ -109,8 +123,57 @@ def _check_anchor(header: dict[str, Any], anchors: Sequence[str], floor: int) ->
     return seq
 
 
+class VerificationLevel(StrEnum):
+    """How much work opening an archive does (owner decision D13).
+
+    * ``NONE``: parse only (debugging, recovery); the archive is read-only.
+    * ``INCREMENTAL`` (SDK and CLI default): recompute the whole hash chain,
+      anchors, transcriptions and seals, but skip Ed25519 checks and blob
+      re-hashing where the local cache or a reader-supplied trusted seal
+      vouches for them.  Never trusts a seal merely found in the archive.
+    * ``FULL``: check everything, ignore the cache, then refresh it.
+    """
+
+    NONE = "none"
+    INCREMENTAL = "incremental"
+    FULL = "full"
+
+
+class BlobChecker:
+    """Checks each referenced blob once per open: a file whose ``(size,
+    mtime_ns)`` matches ``known`` (the local cache) is not re-hashed."""
+
+    def __init__(
+        self, blobs: BlobStore, known: Mapping[str, tuple[int, int]] | None = None
+    ) -> None:
+        self.blobs = blobs
+        self.known = dict(known or {})
+        self.seen: dict[str, tuple[int, int]] = {}
+
+    def check(self, blob_hash: str) -> bool:
+        digest = strip_blob_prefix(blob_hash)
+        if digest in self.seen:
+            return True
+        stat = self.blobs.stat(digest)
+        if stat is None:
+            return False
+        if self.known.get(digest) != stat and not self.blobs.verify(digest):
+            return False
+        self.seen[digest] = stat
+        return True
+
+
+class _TrustNotConfirmed(Exception):
+    """A trusted tip did not match the recomputed chain."""
+
+
 def verify_chain(
-    log: EventLog, blobs: BlobStore, anchors: Sequence[str] | None = None
+    log: EventLog,
+    blobs: BlobStore,
+    anchors: Sequence[str] | None = None,
+    *,
+    trusted: Iterable[VerifiedTip | None] = (),
+    checker: BlobChecker | None = None,
 ) -> ChainState:
     """Verify algorithms, chain links, signatures, referenced blobs and
     transcriptions of ``log``.
@@ -118,6 +181,12 @@ def verify_chain(
     With ``anchors`` (the verified base ``hashes``), ``log`` is a meta log and
     every event's ``base_seq`` / ``base_head`` must point into them, with
     ``base_seq`` never decreasing.
+
+    ``trusted`` tips (from the local cache or a reader-supplied seal) let the
+    signature checks of events ``1..tip.count`` be skipped, provided the
+    recomputed chain confirms that event ``tip.count`` hashes to ``tip.head``.
+    Any mismatch or error falls back to a full pass, so the error reported is
+    always the one a full verification reports.
 
     Raises:
         IntegrityError: ``"Unsupported format version …"``,
@@ -128,12 +197,33 @@ def verify_chain(
             ``"Meta anchor does not match base history"`` or
             ``"Meta anchor goes back in base history"``.
     """
+    checker = checker or BlobChecker(blobs)
+    tips = sorted(
+        {tip for tip in trusted if tip is not None and tip.count > 0},
+        key=lambda tip: tip.count,
+        reverse=True,
+    )
+    for tip in tips:
+        try:
+            return _verify_chain(log, checker, anchors, tip)
+        except _TrustNotConfirmed, IntegrityError:
+            logger.debug("Trusted tip %s not confirmed; checking more", tip)
+    return _verify_chain(log, checker, anchors, None)
+
+
+def _verify_chain(
+    log: EventLog,
+    checker: BlobChecker,
+    anchors: Sequence[str] | None,
+    tip: VerifiedTip | None,
+) -> ChainState:
     hashes: list[str] = []  # hashes[i]: event i under its own hash_alg
     event_blobs: list[str | None] = []
     previous: dict[str, Any] | None = None
     sig_alg: str | None = None
     floor = 0  # highest base_seq seen so far (meta logs only)
-    for event in log:
+    skip_until = tip.count if tip is not None else 0
+    for position, event in enumerate(log, start=1):
         version = event.get("header", {}).get("version")
         if version != EVENT_FORMAT_VERSION:
             raise IntegrityError(f"Unsupported format version {version!r}")
@@ -143,19 +233,23 @@ def verify_chain(
         expected = None if previous is None else event_hash(previous, hash_alg)
         if event["header"].get("prev_hash") != expected:
             raise IntegrityError("Chain broken!")
-        if not verify_event(event):
+        if position > skip_until and not verify_event(event):
             raise IntegrityError("Data tampered or bad author!")
         if anchors is not None:
             floor = _check_anchor(event["header"], anchors, floor)
         body = event.get("body", {})
         blob_hash = body.get("blob_hash")
-        if blob_hash and not blobs.verify(blob_hash):
+        if blob_hash and not checker.check(blob_hash):
             raise IntegrityError("File corrupted or missing!")
         if body.get("event_type") == TRANSCRIPTION_EVENT:
             _check_transcription(body, hashes)
         hashes.append(event_hash(event, hash_alg))
         event_blobs.append(strip_blob_prefix(blob_hash) if blob_hash else None)
+        if tip is not None and position == tip.count and hashes[-1] != tip.head:
+            raise _TrustNotConfirmed
         previous = event
+    if tip is not None and len(hashes) < tip.count:
+        raise _TrustNotConfirmed
     return ChainState(
         head=hashes[-1] if hashes else None,
         count=len(hashes),
@@ -165,9 +259,65 @@ def verify_chain(
     )
 
 
+def scan_chain(log: EventLog) -> ChainState:
+    """Parse ``log`` and compute its hashes without checking anything (NONE)."""
+    hashes: list[str] = []
+    event_blobs: list[str | None] = []
+    sig_alg: str | None = None
+    for event in log:
+        header = event.get("header", {})
+        hash_alg = header.get("hash_alg")
+        sig_alg = header.get("sig_alg")
+        if hash_alg not in HASH_ALGORITHMS:
+            hash_alg = DEFAULT_HASH_ALG
+        hashes.append(event_hash(event, hash_alg))
+        blob_hash = event.get("body", {}).get("blob_hash")
+        event_blobs.append(strip_blob_prefix(blob_hash) if blob_hash else None)
+    return ChainState(
+        head=hashes[-1] if hashes else None,
+        count=len(hashes),
+        sig_alg=sig_alg if hashes else None,
+        hashes=tuple(hashes),
+        blobs=tuple(event_blobs),
+    )
+
+
+def _trusted_tips(
+    seal_log: SealLog, trusted_seal: str
+) -> tuple[VerifiedTip | None, VerifiedTip | None]:
+    """Base and meta tips of the seal whose hash the reader supplied.
+
+    Raises:
+        IntegrityError: ``"Expected seal not found in seal log"``.
+    """
+
+    def tip(raw: Any) -> VerifiedTip | None:
+        if not isinstance(raw, dict):
+            return None
+        count, head = raw.get("count"), raw.get("head")
+        if type(count) is int and count > 0 and isinstance(head, str):
+            return VerifiedTip(count, head)
+        return None
+
+    for raw in seal_log:
+        try:
+            seal_hash = digest(canonical_bytes(raw), raw.get("hash_alg"))
+        except IntegrityError:
+            continue
+        if seal_hash == trusted_seal:
+            return tip(raw.get("base")), tip(raw.get("meta"))
+    raise IntegrityError("Expected seal not found in seal log")
+
+
 class ArchiveStore:
     """The base log, meta log, seal log and blob store of one archive,
-    verified on open (base, then meta against base, then seals)."""
+    verified on open (base, then meta against base, then seals) at ``level``.
+
+    ``cache_dir`` enables the local verification cache (read at
+    ``INCREMENTAL``, written at ``INCREMENTAL`` and ``FULL``); ``None``
+    disables it.  ``trusted_seal`` is a seal hash the reader obtained through
+    a separate route: signatures of the events it covers are not re-checked.
+    """
 
     def __init__(
         self,
@@ -176,15 +326,57 @@ class ArchiveStore:
         meta_log: EventLog,
         blobs: BlobStore,
         seal_log: SealLog | None = None,
+        *,
+        level: VerificationLevel | str = VerificationLevel.FULL,
+        trusted_seal: str | None = None,
+        cache_dir: Path | None = None,
     ) -> None:
         self.root = root
         self.base_log = base_log
         self.meta_log = meta_log
         self.blobs = blobs
         self.seal_log = seal_log or SealLog(root / "seals")
-        self.base = verify_chain(base_log, blobs)
-        self.meta = verify_chain(meta_log, blobs, anchors=self.base.hashes)
+        self.level = VerificationLevel(level)
+        self.trusted_seal = trusted_seal
+        self.cache_dir = cache_dir
+        if self.level is VerificationLevel.NONE:
+            self.base = scan_chain(base_log)
+            self.meta = scan_chain(meta_log)
+            try:
+                self.seals = verify_seals(self.seal_log, self.base, self.meta)
+            except IntegrityError:
+                self.seals = SealChain()
+            return
+
+        use_cache = (
+            cache_dir is not None and self.level is VerificationLevel.INCREMENTAL
+        )
+        cache = load_cache(cache_dir, root) if use_cache else VerificationCache()
+        seal_base = seal_meta = None
+        if trusted_seal is not None:
+            seal_base, seal_meta = _trusted_tips(self.seal_log, trusted_seal)
+        checker = BlobChecker(blobs, cache.blobs)
+        self.base = verify_chain(
+            base_log, blobs, trusted=(cache.base, seal_base), checker=checker
+        )
+        self.meta = verify_chain(
+            meta_log,
+            blobs,
+            anchors=self.base.hashes,
+            trusted=(cache.meta, seal_meta),
+            checker=checker,
+        )
         self.seals: SealChain = verify_seals(self.seal_log, self.base, self.meta)
+        if cache_dir is not None:
+            save_cache(
+                cache_dir,
+                root,
+                VerificationCache(
+                    base=_verified_tip(self.base),
+                    meta=_verified_tip(self.meta),
+                    blobs=checker.seen,
+                ),
+            )
         if self.unreferenced_blobs:
             logger.warning(
                 "%d unreferenced blob(s) in %s (no event uses them; delete them "
@@ -193,7 +385,7 @@ class ArchiveStore:
                 blobs.path,
                 ", ".join(self.unreferenced_blobs),
             )
-        logger.info("ARCHIVE INTEGRITY VERIFIED")
+        logger.info("ARCHIVE INTEGRITY VERIFIED (%s)", self.level.value)
         logger.debug(
             "The archive has %d events and %d meta events",
             self.base.count,
@@ -201,20 +393,38 @@ class ArchiveStore:
         )
 
     @classmethod
-    def open(cls, root: str | Path) -> Self:
-        """Open and fully verify the archive rooted at ``root``."""
+    def open(
+        cls,
+        root: str | Path,
+        *,
+        level: VerificationLevel | str = VerificationLevel.FULL,
+        trusted_seal: str | None = None,
+        cache_dir: Path | None = None,
+    ) -> Self:
+        """Open and verify the archive rooted at ``root`` (``FULL`` by default)."""
         root_path = Path(root)
         return cls(
             root_path,
             EventLog(root_path / "events"),
             EventLog(root_path / "meta" / "events"),
             BlobStore(root_path),
+            level=level,
+            trusted_seal=trusted_seal,
+            cache_dir=cache_dir,
         )
 
-    def reopen(self) -> Self:
-        """Re-read and re-verify the same archive (after writes)."""
+    def reopen(self, level: VerificationLevel | str | None = None) -> Self:
+        """Re-read and re-verify the same archive (after writes), at ``level``
+        or at the level it was opened with."""
         return type(self)(
-            self.root, self.base_log, self.meta_log, self.blobs, self.seal_log
+            self.root,
+            self.base_log,
+            self.meta_log,
+            self.blobs,
+            self.seal_log,
+            level=self.level if level is None else level,
+            trusted_seal=self.trusted_seal,
+            cache_dir=self.cache_dir,
         )
 
     @property

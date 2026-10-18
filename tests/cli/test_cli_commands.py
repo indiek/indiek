@@ -8,6 +8,7 @@ the SDK tests.
 
 from __future__ import annotations
 
+import json
 import mimetypes
 from pathlib import Path
 from typing import Any, Callable
@@ -324,3 +325,69 @@ def test_verify_expect_unknown_seal_fails(
         run_cli("verify", "--expect", "sha256:" + "00" * 32)
     assert excinfo.value.code == 1
     assert "ik: error: Expected seal not found in seal log" in capsys.readouterr().err
+
+
+# --- --verify / --trust-seal / fsck -----------------------------------------------
+
+
+def test_verify_none_reads_a_damaged_archive_but_refuses_writes(
+    run_cli: Callable[..., None],
+    archive_root: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run_cli("create_node", "--content", "n")
+    (log_file,) = (archive_root / "events").rglob("*ndjson")
+    event = json.loads(log_file.read_text("utf-8"))
+    event["body"]["title"] = "forged"  # breaks the signature
+    log_file.write_text(json.dumps(event) + "\n", "utf-8")
+
+    with pytest.raises(SystemExit):
+        run_cli("read", "--mini")
+    run_cli("--verify", "none", "read", "--mini")
+    assert "Events Log" in capsys.readouterr().out
+    with pytest.raises(SystemExit) as excinfo:
+        run_cli("--verify", "none", "create_node", "--content", "x")
+    assert excinfo.value.code == 1
+    assert "verify='none'" in capsys.readouterr().err
+
+
+def test_verify_level_is_validated(run_cli: Callable[..., None]) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        run_cli("--verify", "head_only", "read")
+    assert excinfo.value.code == 2
+
+
+def test_trust_seal_must_be_in_the_seal_log(
+    run_cli: Callable[..., None], capsys: pytest.CaptureFixture[str]
+) -> None:
+    run_cli("create_node", "--content", "n")
+    run_cli("seal")
+    seal_hash = _seal_hash(capsys.readouterr().out)
+    run_cli("--trust-seal", seal_hash, "read", "--mini")
+    with pytest.raises(SystemExit) as excinfo:
+        run_cli("--trust-seal", "sha256:" + "00" * 32, "read")
+    assert excinfo.value.code == 1
+    assert "Expected seal not found in seal log" in capsys.readouterr().err
+
+
+def test_fsck_prints_a_report(
+    run_cli: Callable[..., None],
+    archive_root: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run_cli("create_node", "--content", "n")
+    run_cli("seal")
+    from indiek.core.storage import BlobStore
+
+    stray = BlobStore(archive_root).put("stray")
+    capsys.readouterr()
+    run_cli("fsck")
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == f"Archive: {archive_root}"
+    assert out[1].startswith("Base log: 1 events, head sha256:")
+    assert out[3].startswith("Seals: 1, latest seal 1: sha256:")
+    assert out[4] == "Transcriptions: base 0, meta 0"
+    assert out[5] == "Blobs: 2 files, 1 referenced, 1 unreferenced"
+    assert out[6].startswith("  unreferenced (safe to delete): ")
+    assert out[6].endswith(stray)
+    assert out[-1] == "Verification: full, OK"

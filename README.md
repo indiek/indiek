@@ -45,7 +45,7 @@ IndexedItem(id=UUID('01a14a3a-0b6a-76a3-a0e4-de4eeb1d3705'), alias='e7', kind=<I
 
 # `ik` CLI — API Reference
 
-Reference for all sixteen `ik` subcommands. The Python SDK behind them
+Reference for all seventeen `ik` subcommands. The Python SDK behind them
 (`import indiek`) is documented in the docstrings of `indiek.Archive`.
 
 | Command | Purpose | Prints on success |
@@ -66,6 +66,7 @@ Reference for all sixteen `ik` subcommands. The Python SDK behind them
 | `transcribe` | Attest the verified base or meta log with a signed `transcription` event | `Transcription appended: <hash>` |
 | `seal` | Append a signed seal committing to both logs and their blobs | `Seal <n> created: <hash>` |
 | `verify` | Fully re-verify the archive, optionally requiring a known seal | counts and the latest seal hash |
+| `fsck` | Fully verify the archive and print a health report | a report |
 
 ## Install
 
@@ -80,7 +81,7 @@ Until the PyPI release, install from a checkout of this folder:
 ## Invocation shape
 
 ```
-ik [--dot-env PATH] [--logging-level LEVEL] <command> [flags]
+ik [--dot-env PATH] [--logging-level LEVEL] [--verify LEVEL] [--trust-seal HASH] <command> [flags]
 ```
 
 Global flags apply to every command and must precede the subcommand.
@@ -89,6 +90,8 @@ Global flags apply to every command and must precede the subcommand.
 | --- | --- | --- | --- |
 | `--dot-env` | no | `.env` | Dotenv file to load. Loaded with `override=False`, so real environment variables win. |
 | `--logging-level` | no | `WARNING` | A `logging` level name, case-insensitive: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Any other name exits with status 2. |
+| `--verify` | no | `incremental` | Verification level when opening the archive: `none`, `incremental` or `full` (case-insensitive). See [Verification levels and the trust model](#verification-levels-and-the-trust-model). |
+| `--trust-seal` | no | — | A seal hash you obtained through a separate, trusted route; the signatures of the events it covers are not re-checked. |
 
 All log output is written to **stderr**. Stdout carries only command output
 (printed IDs, tables, `config` / `keygen` lines), so it is safe to pipe.
@@ -99,6 +102,7 @@ All log output is written to **stderr**. Stdout carries only command output
 | ----------------------- | -------------------------------------------------------------------------- |
 | `IK_ARCHIVE_PATH`       | Root directory of the archive.                                             |
 | `IK_AUTHOR_PRIVATE_KEY` | Current author's Ed25519 private key: a 32-byte seed as 64 hex characters. |
+| `IK_CACHE_DIR`          | Optional. Directory of the local verification cache (default: your OS cache directory, see [Verification levels and the trust model](#verification-levels-and-the-trust-model)). |
 
 Which commands need what:
 
@@ -127,9 +131,12 @@ Python SDK (`indiek.IndieKError` and subclasses); the CLI prints the same
 
 ### Integrity verification
 
-Every command that opens the archive (all but `config` and `keygen`) walks and
-verifies the whole event log, the whole meta event log **and** the seal log
-before running. There is no way to skip verification.
+Every command that opens the archive (all but `config` and `keygen`) walks
+the event log, the meta event log **and** the seal log before running, at the
+level chosen with `--verify` (default `incremental`, see
+[Verification levels and the trust model](#verification-levels-and-the-trust-model)).
+`verify`, `fsck`, `seal`, `ingest`, `export` and `manifest` always verify
+fully.
 Every event names its algorithms in `header.hash_alg` (`sha256`) and
 `header.sig_alg` (`ed25519`). Hashes and signatures are written with the
 algorithm as a prefix: `prev_hash` and archive heads are `sha256:<hex>`,
@@ -167,8 +174,8 @@ Building the index then raises `IntegrityError` if the logs are inconsistent:
 - `Supersede by a non-author of item <id>`
 - `Tag assignment references an unknown representation`
 
-A successful verification logs `ARCHIVE INTEGRITY VERIFIED` at `INFO`, on
-stderr (visible with `--logging-level info`).
+A successful verification logs `ARCHIVE INTEGRITY VERIFIED (<level>)` at
+`INFO`, on stderr (visible with `--logging-level info`).
 
 Some conditions are reported as a `WARNING` on stderr but do **not** fail
 verification: unreferenced blobs, a seal of an empty archive, and a seal that
@@ -247,6 +254,90 @@ opening the archive only logs, at `WARNING` level,
 together: ship it only with both `events/` and `meta/`. Without `meta/`,
 the seals fail with `Seal does not match logs!`; drop `seals/` as well and the
 base verifies on its own.
+
+### Verification levels and the trust model
+
+Checking an archive costs time, mostly the Ed25519 signature check of every
+event and the re-hashing of every blob. Measured on a 10,000-event archive:
+
+| Level (`--verify`, `Archive.open(verify=…)`) | What it does | 10k events |
+| --- | --- | --- |
+| `full` | Checks everything; ignores the cache, then refreshes it. | ≈ 11 s |
+| `incremental` (default) | Re-reads every line and recomputes every hash link, meta anchor, transcription and seal, but skips the signature checks and blob re-hashing that a **trusted source** already vouches for. Everything else is checked as in `full`. | ≈ 1 s once cached |
+| `none` | Only parses (debugging, recovering a damaged archive). The archive is **read-only**: any write fails with `Writes need verification: this archive was opened with verify='none'`. | ≈ 0.3 s |
+
+`ik verify`, `ik fsck`, `ik seal`, `ik ingest`, `ik export` and `ik manifest`
+(and the SDK's `verify()`, `fsck()`, `seal()`, `ingest()`, `export_graphml()`,
+`write_manifest()`) always run a `full` check first, whatever `--verify` says.
+At `incremental`, the error you get for a damaged archive is exactly the one
+`full` would report: as soon as anything does not match what a trusted source
+promised, the reader falls back to checking everything.
+
+**What may be skipped, and on what basis.** Skipping is allowed on exactly
+two grounds:
+
+1. **(a) Your own machine checked it before (the local cache).** After a
+   successful check, the reader records, per log: *"the signatures of events
+   1…N were valid, and event N hashed to H"*, and for blobs each verified
+   file's size and modification time. Next time, it recomputes the hash chain
+   anyway (cheap); if event N still hashes to H, events 1…N are byte-for-byte
+   the ones already checked, so their signatures are not checked again. If
+   anything changed, the cache simply does not apply and the log is checked in
+   full. A blob file is re-hashed only if its size or modification time
+   changed.
+2. **(b) A seal hash you obtained separately (`--trust-seal HASH`,
+   `Archive.open(…, trusted_seal=HASH)`).** The author, or an independent
+   third party, publishes the archive's seal hash through another route (their
+   HTTPS website, a signed email, a printed page). The seal with that hash must
+   be in the seal log, otherwise the archive is rejected with
+   `Expected seal not found in seal log`. Every event it covers is still
+   re-hashed and must chain exactly to the seal's tips, which proves they are
+   the very bytes that were sealed; only their signature checks are skipped
+   (`seal()` checked them all before sealing). Events after that seal are
+   fully checked. A seal commits to blob *hashes*, not to the bytes on your
+   disk, so blobs are still re-hashed (or skipped per (a)).
+
+**Never on the basis of a seal found in the archive itself.** Any key may
+seal, so a seal you did not obtain separately proves nothing about who checked
+what. Example: Alice sends you her archive; Mallory intercepts it, changes
+Alice's event #500 ("X is true" → "X is false"), re-links the events after it
+and appends a seal signed with *his own* key. He cannot re-sign event #500 as
+Alice, so a full check fails with `Data tampered or bad author!`. If readers
+trusted any seal in the log, they would skip exactly that check. IndieK
+therefore always **checks** seals found in the archive and never **trusts**
+them; only a hash you supply (b) is trusted. If you have Alice's real seal
+hash from her website, `--trust-seal` with it rejects Mallory's copy: his
+change breaks the chain before it reaches the seal's tips.
+
+**Where the cache lives.** Outside the archive, in your user cache directory,
+so nothing shipped with an archive can make you skip checks:
+
+| System | Directory |
+| --- | --- |
+| macOS | `~/Library/Caches/indiek/` |
+| Linux and others | `$XDG_CACHE_HOME/indiek/` (default `~/.cache/indiek/`) |
+| Windows | `%LOCALAPPDATA%\indiek\Cache\` |
+
+Set `IK_CACHE_DIR` to use another directory. There is one small `state.json`
+per archive (in a sub-folder named after a hash of the archive's absolute
+path); it holds hashes, counts and file sizes/times, never content. Deleting
+it is always safe: the next open simply checks everything again. A
+`.ik-cache/` folder inside an archive is never read.
+
+**Caveats.**
+
+- The separate route for (b) must be authenticated: if an attacker controls
+  it, he publishes his own hash.
+- Trusting a seal hash means trusting that its sealer checked the archive
+  before sealing (IndieK's `seal()` always does).
+- No seal proves it is the *latest* one; freshness needs a recent publication.
+- Anyone who can write to your cache directory could make forged events skip
+  their signature checks, but such a person already controls your user
+  account (git trusts its own index the same way).
+- **Verify-on-read.** The blob cache cannot see bit rot that keeps a file's
+  size and modification time. Every blob is therefore re-hashed whenever it is
+  read (`IntegrityError: File corrupted or missing! (blob …)`), and
+  `ik verify` / `ik fsck` re-hash all of them.
 
 ## Identifiers
 
@@ -709,6 +800,29 @@ referenced blob, and every seal.
 ```bash
 ik verify --expect "$PUBLISHED_SEAL_HASH"   # e.g. sha256:e1c0aa46…
 ```
+
+---
+
+## `ik fsck`
+
+Fully verifies the archive (whatever `--verify` says) and prints a report.
+No flags. Exits 1 with the `IntegrityError` message if the archive is invalid.
+
+```
+Archive: /home/me/archives/demo
+Base log: 10 events, head sha256:…
+Meta log: 6 events, head sha256:…
+Seals: 1, latest seal 1: sha256:…
+Transcriptions: base 0, meta 0
+Blobs: 9 files, 8 referenced, 1 unreferenced
+  unreferenced (safe to delete): /home/me/archives/demo/blobs/sha256/4f/cc/4fcc…
+Representations without a tag: 0
+Verification: full, OK
+```
+
+Unreferenced blobs and representations without a tag are reported, not
+errors (see [Seals and the blob store](#seals-and-the-blob-store)). SDK:
+`ik.fsck()` returns an `indiek.FsckReport` with the same fields.
 
 ---
 

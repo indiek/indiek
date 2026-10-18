@@ -18,16 +18,20 @@ The public facade of the IndieK SDK: :class:`Archive`."""
 
 from __future__ import annotations
 
+import os
+import sys
 from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
 from typing import Any, Self
 from uuid import UUID
 
-from indiek.core.archive import ArchiveStore
+from indiek.core.archive import ArchiveStore, VerificationLevel
+from indiek.core.cache import default_cache_dir
 from indiek.core.author import Author
 from indiek.core.errors import ArchiveRuleError, AuthorshipError, IntegrityError
-from indiek.core.index import ArchiveIndex, Network
+from indiek.core.index import ArchiveIndex, ItemKind, Network
 from indiek.core.models import MediaType, ResourceType
 from indiek.core.seals import Seal
 from indiek.ops import (
@@ -44,12 +48,39 @@ from indiek.ops.ingest import IngestResult
 from indiek.ops.tags import TagKind
 
 
+@dataclass(frozen=True, slots=True)
+class FsckReport:
+    """Result of :meth:`Archive.fsck` (a ``FULL`` verification passed)."""
+
+    path: Path
+    base_count: int
+    base_head: str | None
+    meta_count: int
+    meta_head: str | None
+    seal_count: int
+    latest_seal: Seal | None
+    transcriptions: dict[str, int]
+    blob_files: int
+    referenced_blobs: int
+    unreferenced_blobs: list[Path]
+    untagged_representations: int
+
+
 class Archive:
     """An IndieK archive opened from a folder, optionally with a signing author.
 
     Every write appends signed events and then refreshes :attr:`index`, so
     aliases (``e1``, ``m1``…) of new items are usable immediately.  Without an
     ``author`` the archive is read-only.
+
+    Verification (owner decisions 2026-10-17): ``verify="incremental"`` (the
+    default) recomputes every hash chain but skips the signature checks and
+    blob re-hashing that this machine's cache (stored outside the archive) or
+    a ``trusted_seal`` you obtained separately vouches for; seals found in the
+    archive are always checked, never trusted.  ``"full"`` checks everything;
+    ``"none"`` only parses and makes the archive read-only.  ``verify()``,
+    ``fsck()``, ``seal()``, ``ingest()``, ``export_graphml()`` and
+    ``write_manifest()`` always verify fully first.
 
     Example::
 
@@ -59,26 +90,67 @@ class Archive:
         ik.set_tag(tag, theorem)
     """
 
-    def __init__(self, path: Path, author: Author | None, index: ArchiveIndex) -> None:
+    def __init__(
+        self,
+        path: Path,
+        author: Author | None,
+        index: ArchiveIndex,
+        level: VerificationLevel = VerificationLevel.INCREMENTAL,
+    ) -> None:
         self._path = path
         self.author = author
         self._index = index
+        self._level = level
 
     @classmethod
-    def open(cls, path: str | Path, author: Author | None = None) -> Self:
-        """Open and fully verify the archive at ``path`` (which may not exist yet).
+    def open(
+        cls,
+        path: str | Path,
+        author: Author | None = None,
+        *,
+        verify: VerificationLevel | str = VerificationLevel.INCREMENTAL,
+        trusted_seal: str | None = None,
+        cache_dir: str | Path | None = None,
+    ) -> Self:
+        """Open and verify the archive at ``path`` (which may not exist yet).
+
+        Args:
+            verify: ``"incremental"`` (default), ``"full"`` or ``"none"``.
+            trusted_seal: a seal hash obtained through a separate, trusted
+                route; the signatures of the events it covers are not
+                re-checked (their hash chain still is).
+            cache_dir: the verification cache directory; default: the
+                user's cache dir (``IK_CACHE_DIR``, else per-OS convention).
 
         Raises:
-            IntegrityError: the archive on disk is corrupted or inconsistent.
+            IntegrityError: the archive on disk is corrupted or inconsistent,
+                or ``trusted_seal`` is not in its seal log.
+            ValueError: unknown ``verify`` level.
         """
         root = Path(path).expanduser()
-        return cls(root, author, ArchiveIndex(ArchiveStore.open(root)))
+        level = VerificationLevel(verify)
+        directory = (
+            Path(cache_dir)
+            if cache_dir is not None
+            else default_cache_dir(
+                environ=os.environ, platform=sys.platform, home=Path.home()
+            )
+        )
+        store = ArchiveStore.open(
+            root, level=level, trusted_seal=trusted_seal, cache_dir=directory
+        )
+        return cls(root, author, ArchiveIndex(store), level)
 
     # -- state -------------------------------------------------------------
 
     @property
     def path(self) -> Path:
         return self._path
+
+    @property
+    def verification(self) -> VerificationLevel:
+        """The level this archive was opened with (used by every refresh)."""
+        return self._level
 
     @property
     def index(self) -> ArchiveIndex:
@@ -95,9 +167,18 @@ class Archive:
         """Prefixed hash (``sha256:<hex>``) of the last meta event, or ``None``."""
         return self._index.meta_head
 
-    def refresh(self) -> None:
-        """Re-read and re-verify the archive (picks up writes by other processes)."""
-        self._index = ArchiveIndex(self._index.store.reopen())
+    def refresh(self, level: VerificationLevel | str | None = None) -> None:
+        """Re-read and re-verify the archive (picks up writes by other
+        processes), at ``level`` or at the level it was opened with."""
+        chosen = self._level if level is None else VerificationLevel(level)
+        self._index = ArchiveIndex(self._index.store.reopen(chosen))
+
+    def _verify_fully(self) -> None:
+        """Re-verify everything (``FULL``, which refreshes the cache), then keep
+        working at this archive's own level."""
+        self.refresh(VerificationLevel.FULL)
+        if self._level is not VerificationLevel.FULL:
+            self.refresh()
 
     def events(self, network: Network = "base") -> Iterator[dict[str, Any]]:
         """Iterate the raw events of the ``"base"`` or ``"meta"`` log, in order."""
@@ -109,6 +190,11 @@ class Archive:
         raise ValueError(f"network must be 'base' or 'meta', not {network!r}")
 
     def _writer(self) -> Author:
+        if self._level is VerificationLevel.NONE:
+            raise ArchiveRuleError(
+                "Writes need verification: this archive was opened with "
+                "verify='none' (read-only)"
+            )
         if self.author is None:
             raise AuthorshipError("An author is required to write to an archive")
         return self.author
@@ -231,7 +317,7 @@ class Archive:
                 :meth:`unreferenced_blobs`; delete them first).
         """
         author = self._writer()
-        self.refresh()
+        self._verify_fully()
         new_seal = sealing.seal(self._index, author)
         self.refresh()
         return new_seal
@@ -248,7 +334,7 @@ class Archive:
         return list(self._index.store.seals.seals)
 
     def verify(self, *, expect: str | None = None) -> Seal | None:
-        """Re-read and fully re-verify the archive from disk.
+        """Re-read and fully (``FULL``) re-verify the archive from disk.
 
         Returns the seal whose hash is ``expect`` or, without ``expect``, the
         latest seal (``None`` if there is none).
@@ -257,7 +343,7 @@ class Archive:
             IntegrityError: the archive is invalid, or ``"Expected seal not
                 found in seal log"``.
         """
-        self.refresh()
+        self._verify_fully()
         chain_ = self._index.store.seals
         if expect is None:
             return chain_.latest
@@ -265,6 +351,40 @@ class Archive:
             if candidate.hash == expect:
                 return candidate
         raise IntegrityError("Expected seal not found in seal log")
+
+    def fsck(self) -> FsckReport:
+        """Fully verify the archive and report on its state.
+
+        Raises:
+            IntegrityError: the archive is invalid.
+        """
+        self._verify_fully()
+        index = self._index
+        store = index.store
+        representations = {
+            str(item.id)
+            for item in index.items.values()
+            if item.kind in {ItemKind.NODE_REPRESENTATION, ItemKind.EDGE_REPRESENTATION}
+        }
+        tagged = {
+            str(item.body["target_node"])
+            for item in index.items.values()
+            if item.kind in {ItemKind.NODE_TAG_ASSIGNMENT, ItemKind.EDGE_TAG_ASSIGNMENT}
+        }
+        return FsckReport(
+            path=self._path,
+            base_count=store.base.count,
+            base_head=store.base.head,
+            meta_count=store.meta.count,
+            meta_head=store.meta.head,
+            seal_count=store.seals.count,
+            latest_seal=store.seals.latest,
+            transcriptions={n: len(r) for n, r in index.transcriptions.items()},
+            blob_files=len(store.blobs.iter_hashes()),
+            referenced_blobs=len(store.referenced_blobs),
+            unreferenced_blobs=self.unreferenced_blobs(),
+            untagged_representations=len(representations - tagged),
+        )
 
     # -- bulk, export, documentation ----------------------------------------
 
@@ -275,7 +395,10 @@ class Archive:
         edges_file: str | Path | None = None,
     ) -> IngestResult:
         """Create a node per entry of ``input_folder``, then an edge per line
-        (``source,target,content``) of ``edges_file``."""
+        (``source,target,content``) of ``edges_file`` (after a ``FULL``
+        verification)."""
+        author = self._writer()
+        self._verify_fully()
         file_paths: Sequence[Path] = (
             ingest.list_folder(input_folder) if input_folder else []
         )
@@ -286,7 +409,7 @@ class Archive:
         try:
             return ingest.ingest(
                 self._index,
-                self._writer(),
+                author,
                 file_paths=file_paths,
                 edge_definitions=edge_definitions,
             )
@@ -296,12 +419,16 @@ class Archive:
     def export_graphml(
         self, output_path: str | Path, tags: Sequence[str | UUID] = ()
     ) -> Path:
-        """Write the base network as GraphML, optionally filtered by tags (OR)."""
+        """Write the base network as GraphML, optionally filtered by tags (OR),
+        after a ``FULL`` verification."""
+        self._verify_fully()
         return export.export_graphml(self._index, output_path, tags)
 
     def write_manifest(self) -> Path:
         """Write ``MANIFEST.json`` at the archive root, listing the author (if
-        any) and every algorithm used in the archive."""
+        any) and every algorithm used in the archive (after a ``FULL``
+        verification)."""
+        self._verify_fully()
         self._path.mkdir(parents=True, exist_ok=True)
         keys = [self.author.public_key_hex] if self.author else []
         algorithms = manifest.collect_algorithms(

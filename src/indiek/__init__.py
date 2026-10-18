@@ -26,6 +26,7 @@ IndieK: a signed, append-only knowledge-graph archive format and its SDK.
 
 from importlib.metadata import PackageNotFoundError, version
 
+from indiek.core.archive import VerificationLevel
 from indiek.core.author import Author
 from indiek.core.errors import (
     ArchiveRuleError,
@@ -38,7 +39,7 @@ from indiek.core.index import ArchiveIndex, IndexedItem, ItemKind, Transcription
 from indiek.core.models import EventType, MediaType, MetaEventType, ResourceType
 from indiek.core.seals import Seal
 from indiek.ops.ingest import IngestResult
-from indiek.sdk import Archive
+from indiek.sdk import Archive, FsckReport
 
 try:
     __version__ = version("indiek")
@@ -52,6 +53,7 @@ __all__ = [
     "Author",
     "AuthorshipError",
     "EventType",
+    "FsckReport",
     "IndexedItem",
     "IndieKError",
     "IngestResult",
@@ -63,5 +65,6 @@ __all__ = [
     "Seal",
     "TranscriptionRecord",
     "UnknownItemError",
+    "VerificationLevel",
     "__version__",
 ]

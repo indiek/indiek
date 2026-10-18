@@ -119,3 +119,12 @@ def _quiet_logging() -> Iterator[None]:
     yield
     root.handlers = original_handlers
     root.setLevel(original_level)
+
+
+@pytest.fixture(autouse=True)
+def ik_cache_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point the verification cache (``IK_CACHE_DIR``) into this test's tmp dir,
+    so no test reads or writes the user's real cache."""
+    cache = tmp_path / "ik-cache"
+    monkeypatch.setenv("IK_CACHE_DIR", str(cache))
+    return cache

@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from indiek.core.canonical import parse_line
+from indiek.core.errors import IntegrityError
 from indiek.core.models import EventModel, MetaEventModel, SealModel
 
 logger = logging.getLogger(__name__)
@@ -129,8 +130,22 @@ class BlobStore:
         return digest
 
     def get(self, blob_hash: str) -> bytes:
-        """Raw bytes of a blob; raises ``FileNotFoundError`` if absent."""
-        return self.path_for(blob_hash).read_bytes()
+        """Raw bytes of a blob, re-hashed on every read (verify-on-read).
+
+        Raises:
+            IntegrityError: ``"File corrupted or missing! …"`` if the file is
+                absent or its bytes do not hash to its name.
+        """
+        digest = strip_blob_prefix(blob_hash)
+        try:
+            raw = self.path_for(digest).read_bytes()
+        except FileNotFoundError, IsADirectoryError:
+            raise IntegrityError(
+                f"File corrupted or missing! (blob {digest})"
+            ) from None
+        if hashlib.sha256(raw).hexdigest() != digest:
+            raise IntegrityError(f"File corrupted or missing! (blob {digest})")
+        return raw
 
     def get_text(self, blob_hash: str) -> str:
         """A text blob decoded as UTF-8."""
@@ -139,10 +154,18 @@ class BlobStore:
     def verify(self, blob_hash: str) -> bool:
         """Whether the blob exists and its bytes hash to its name."""
         try:
-            raw = self.get(blob_hash)
-        except FileNotFoundError:
+            self.get(blob_hash)
+        except IntegrityError:
             return False
-        return hashlib.sha256(raw).hexdigest() == strip_blob_prefix(blob_hash)
+        return True
+
+    def stat(self, blob_hash: str) -> tuple[int, int] | None:
+        """``(size, mtime_ns)`` of a blob file, or ``None`` if it is absent."""
+        try:
+            info = self.path_for(blob_hash).stat()
+        except FileNotFoundError, NotADirectoryError:
+            return None
+        return info.st_size, info.st_mtime_ns
 
     def iter_hashes(self) -> list[str]:
         """Sorted bare hex names of every blob file on disk."""

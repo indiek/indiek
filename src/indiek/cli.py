@@ -21,7 +21,15 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
-from indiek import Archive, Author, IndieKError, MediaType, ResourceType
+from indiek import (
+    Archive,
+    Author,
+    FsckReport,
+    IndieKError,
+    MediaType,
+    ResourceType,
+    VerificationLevel,
+)
 
 try:
     from dotenv import dotenv_values, load_dotenv, set_key
@@ -56,6 +64,26 @@ def build_parser() -> argparse.ArgumentParser:
         choices=LOGGING_LEVELS,
         default="WARNING",
         help="Log level for stderr (case-insensitive, default: WARNING).",
+    )
+    parser.add_argument(
+        "--verify",
+        type=str.lower,
+        choices=[level.value for level in VerificationLevel],
+        default=VerificationLevel.INCREMENTAL.value,
+        help=(
+            "How much to verify when opening the archive (default: incremental, "
+            "which skips only what this machine's cache or --trust-seal vouches "
+            "for; 'none' parses only and refuses writes)."
+        ),
+    )
+    parser.add_argument(
+        "--trust-seal",
+        default=None,
+        metavar="HASH",
+        help=(
+            "A seal hash obtained through a separate, trusted route: the "
+            "signatures of the events it covers are not re-checked."
+        ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -213,6 +241,11 @@ def build_parser() -> argparse.ArgumentParser:
             "seal hash, the one string that commits to the whole archive."
         ),
     )
+    subparsers.add_parser(
+        "fsck",
+        help="Fully verify the archive and print a report (counts, heads, "
+        "seals, unreferenced blobs).",
+    )
     verify_parser = subparsers.add_parser(
         "verify", help="Fully re-verify the archive, its seals and its blob set."
     )
@@ -336,6 +369,25 @@ def _verify(ik: Archive, expect: str | None) -> None:
         print(f"Latest seal: {latest.hash}")
 
 
+def _print_fsck(report: FsckReport) -> None:
+    latest = report.latest_seal
+    lines = [
+        f"Archive: {report.path}",
+        f"Base log: {report.base_count} events, head {report.base_head}",
+        f"Meta log: {report.meta_count} events, head {report.meta_head}",
+        f"Seals: {report.seal_count}"
+        + (f", latest seal {latest.seq}: {latest.hash}" if latest else ""),
+        "Transcriptions: "
+        + ", ".join(f"{n} {c}" for n, c in report.transcriptions.items()),
+        f"Blobs: {report.blob_files} files, {report.referenced_blobs} referenced, "
+        f"{len(report.unreferenced_blobs)} unreferenced",
+        *(f"  unreferenced (safe to delete): {p}" for p in report.unreferenced_blobs),
+        f"Representations without a tag: {report.untagged_representations}",
+        "Verification: full, OK",
+    ]
+    print("\n".join(lines))
+
+
 def _fail(message: str) -> NoReturn:
     """Report a failed command on one stderr line and exit 1 (traceback at DEBUG)."""
     logger.debug("ik failed", exc_info=True)
@@ -377,7 +429,12 @@ def _run_archive_command(
     except ValueError as exc:  # never echo the key itself
         _fail(f"{PRIVATE_KEY_VAR} is invalid: {exc}")
     logger.debug("archive_path=%s", archive_path)
-    ik = Archive.open(archive_path, author=author)
+    ik = Archive.open(
+        archive_path,
+        author=author,
+        verify=args.verify,
+        trusted_seal=args.trust_seal,
+    )
 
     match args.command:
         case "create_node":
@@ -409,6 +466,8 @@ def _run_archive_command(
             print(f"Seal {new_seal.seq} created: {new_seal.hash}")
         case "verify":
             _verify(ik, args.expect)
+        case "fsck":
+            _print_fsck(ik.fsck())
         case "transcribe":
             new_head = ik.transcribe(args.network, note=args.note)
             print(f"Transcription appended: {new_head}")

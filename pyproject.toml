@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "indiek"
-version = "0.15.0"
+version = "0.16.0"
 description = "IndieK archive SDK and ik CLI"
 requires-python = ">=3.14"
 dependencies = [
@@ -35,3 +35,5 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = ["slow: long-running tests, run with `uv run pytest -m slow`"]
+addopts = "-m 'not slow'"
