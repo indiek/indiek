@@ -198,6 +198,23 @@ def test_set_tag_requires_tag_and_id(
     assert excinfo.value.code == 2
 
 
+# --- manifest --------------------------------------------------------------------
+
+
+def test_manifest_writes_the_spec_and_the_vectors_next_to_it(
+    run_cli: Callable[..., None],
+    archive_root: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run_cli("create_node", "--content", "n")
+    capsys.readouterr()
+    run_cli("manifest")
+    manifest = archive_root.resolve() / "MANIFEST.json"
+    assert capsys.readouterr().out.strip() == f"MANIFEST written to: {manifest}"
+    assert (archive_root / "SPEC.md").is_file()
+    assert (archive_root / "test_vectors.json").is_file()
+
+
 # --- transcribe ------------------------------------------------------------------
 
 

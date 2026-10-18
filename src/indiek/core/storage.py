@@ -25,7 +25,8 @@ Layout (relative to the archive root)::
 
 A log is read by sorting every ``*ndjson`` path under its directory
 lexicographically, then reading each file top to bottom.  Lines are parsed
-with :func:`indiek.core.canonical.parse_line` (strict)."""
+as UTF-8 bytes with :func:`indiek.core.canonical.parse_line` (strict), so bit
+rot that breaks the encoding is an ``IntegrityError``, not a crash."""
 
 from __future__ import annotations
 
@@ -61,7 +62,7 @@ class EventLog:
 
     def __iter__(self) -> Iterator[dict[str, Any]]:
         for file_path in self.files():
-            with open(file_path, "rt", encoding="utf-8") as handle:
+            with open(file_path, "rb") as handle:
                 for line in handle:
                     yield parse_line(line)
 
@@ -90,7 +91,7 @@ class SealLog:
     def __iter__(self) -> Iterator[dict[str, Any]]:
         if not self.file.is_file():
             return
-        with open(self.file, "rt", encoding="utf-8") as handle:
+        with open(self.file, "rb") as handle:
             for line in handle:
                 yield parse_line(line)
 

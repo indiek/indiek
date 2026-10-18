@@ -52,8 +52,15 @@ NODE_TEXT = "Gödel's incompleteness theorem"
 
 RULES = {
     "canonical_bytes": (
+        "RFC 8785 (JCS) restricted to ASCII object keys and integers in "
+        "[-(2^53-1), 2^53-1]; inside that subset it equals "
         'json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False) '
         "encoded as UTF-8"
+    ),
+    "integer_range": (
+        "every JSON number is an integer in [-(2^53-1), 2^53-1] "
+        "(-9007199254740991 to 9007199254740991); writers refuse and readers "
+        "reject any other number"
     ),
     "algorithms": (
         "header.hash_alg and header.sig_alg name the event's algorithms (today "
@@ -89,7 +96,12 @@ RULES = {
         "event_hash of event number verified_count (1-based) of that log, and "
         "verified_count must be smaller than the transcription's own position"
     ),
-    "strict_parsing": "a log line with duplicate keys, floats, NaN or Infinity is invalid",
+    "strict_parsing": (
+        "a log line that is not UTF-8, not one JSON object, or holds a duplicate "
+        "key, a non-integer number (fraction, exponent, NaN, Infinity), an "
+        "integer outside the range above or a string with a lone surrogate is "
+        "invalid"
+    ),
 }
 
 

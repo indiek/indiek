@@ -1,814 +1,809 @@
-See [indiek.org](https://indiek.org) for broader context and documentation on the IndieK project.
-# SDK summary notes
-## Reading an archive
-To load an existing archive, read-only, from your hard-drive, do the following.
-```python
-from indiek import Archive
-ik = Archive.open("/foo/bar/your_archive")
-```
-In the SDK, "items" are events. You may inspect them as a list of `indiek.core.index.IndexedItem` with:
-```python
-items = list(ik.index.items.values())
-first_event = items[0]
-```
-### Inspecting a text blob
-Assuming your first event was the creation of a node with text data type, you may read the text with:
-```python
-from indiek.core.models import MediaType
-text_types = {MediaType.TEXT_PLAIN.value, MediaType.TEXT_MARKDOWN.value}
-if (item_media:=first_event.body['media_type']) in text_types:
-    ik.index.store.blobs.get_text(first_event.body['blob_hash'])
-else:
-    print(item_media, "is not a text media type")
-```
-### Inspecting an edge
-Below is a REPL illustrating how to display the text blob associated
-with the source and target nodes of the first edge from the `items` list above.
-```python
->>> from indiek.core.index import ItemKind
->>> for i in items:
-...     if i.kind == ItemKind.EDGE:
-...         break
-...         
->>> i  # the edge
-IndexedItem(id=UUID('01a14a3a-0b6a-76a3-a0e4-de4eeb1d3705'), alias='e7', kind=<ItemKind.EDGE: 'edge'>, author='d2d39654817d03df5510a0a7e3a82b621b500774693d3f33bb150aadb4158100', body={'event_type': 'create_edge', 'resource_type': 'managed', 'media_type': 'text/plain; charset=utf-8', 'blob_hash': 'sha256:923b4b90ea64343e4a1cc2386c52fb2c0d197b0673cffbf1197169c27c8e4eb9', 'uri': None, 'path': None, 'file_size': None, 'file_hash': None, 'last_verified': None, 'title': None, 'body_type': 'edge', 'edge_id': '01a14a3a-0b6a-76a3-a0e4-de4eeb1d3705', 'source_node': '01a14a3a-071c-7192-81c8-3508c77d385f', 'target_node': '01a14a3a-0645-753b-8414-2deab807aeaa'}, tags=set())
->>> source_target = [create_node for create_node in items if str(create_node.id) in { '01a14a3a-071c-7192-81c8-3508c77d385f', '01a14a3a-0645-753b-8414-2deab807aeaa'}]
->>> len(source_target)
-2
->>> ik.index.store.blobs.get_text(i.body['blob_hash'])  # the edge label 
-'states'
->>> ik.index.store.blobs.get_text(source_target[0].body['blob_hash'])  # source node text
-"Gödel's *first* incompleteness theorem"
->>> ik.index.store.blobs.get_text(source_target[1].body['blob_hash'])  # target node text
-'The thm stateemnt\n'
+# IndieK — the `indiek` SDK and the `ik` CLI
+
+**IndieK is an archival format for knowledge graphs, built to last.** An
+archive is a plain folder of signed, append-only, hash-chained event logs and
+content-addressed files that anyone can verify, now or in a century, with
+nothing but this specification and standard cryptography.
+
+This package is the reference implementation: a Python SDK (`import indiek`)
+and a command-line tool (`ik`). Broader context, guides and examples live on
+[indiek.org](https://indiek.org).
+
+- Package version: **1.0.0** · Archive format: **3.0** · License: Apache-2.0
+- Python 3.14 or newer
+
+## Contents
+
+- [What is an IndieK archive?](#what-is-an-indiek-archive)
+- [Install](#install)
+- [Quickstart](#quickstart)
+- [Concepts](#concepts)
+- [Python SDK reference](#python-sdk-reference)
+- [`ik` CLI reference](#ik-cli-reference)
+- [Integrity, seals and trust](#integrity-seals-and-trust)
+- [Known limitations](#known-limitations)
+- [The archive format](#the-archive-format)
+- [Contributing](#contributing)
+- [License](#license)
+
+## What is an IndieK archive?
+
+A knowledge graph of **nodes** (a statement, a note, an image, a PDF, a link)
+and **directed edges** between them (which carry content too: "proves",
+"cites", "contradicts"), plus **tags** on both, stored as a folder:
+
+```text
+my-archive/
+├── events/2026/10/18/events.ndjson        base log: nodes and edges
+├── meta/events/2026/10/18/events.ndjson   meta log: tags and tag assignments
+├── blobs/sha256/71/a0/71a0b54b…           content, named by its SHA-256
+├── seals/seals.ndjson                     signed checkpoints (optional)
+├── MANIFEST.json                          layout + JSON Schemas (optional)
+├── SPEC.md                                the format specification (optional)
+└── test_vectors.json                      test vectors (optional)
 ```
 
-# `ik` CLI — API Reference
-
-Reference for all seventeen `ik` subcommands. The Python SDK behind them
-(`import indiek`) is documented in the docstrings of `indiek.Archive`.
-
-| Command | Purpose | Prints on success |
-| --- | --- | --- |
-| `config` | Show / set `IK_ARCHIVE_PATH` in the dotenv file | `IK_ARCHIVE_PATH=<value>` |
-| `keygen` | Generate an Ed25519 author key | `IK_AUTHOR_PRIVATE_KEY=<seed>` (nothing with `--write`) |
-| `create_node` | Add a base-network node (`managed`, `uri`, `local_file`) | `Node created: <uuid>` |
-| `create_edge` | Add a directed, content-carrying edge between two nodes | `Edge created: <uuid>` |
-| `supersede_node` | Replace a node's content (append-only) | `Node superseded: <uuid>` |
-| `supersede_edge` | Replace an edge's content (append-only) | `Edge superseded: <uuid>` |
-| `create_node_tag` | Define a tag for nodes | nothing |
-| `create_edge_tag` | Define a tag for edges | `Meta node created: <uuid>` |
-| `set_tag` | Attach a tag to a node or edge | nothing |
-| `read` | Print the base and meta event logs as tables | two tables |
-| `export` | Write the base network as GraphML | nothing |
-| `ingest` | Bulk-create nodes from a folder and edges from a file | nothing |
-| `manifest` | Write `MANIFEST.json` at the archive root | `MANIFEST written to: <path>` |
-| `transcribe` | Attest the verified base or meta log with a signed `transcription` event | `Transcription appended: <hash>` |
-| `seal` | Append a signed seal committing to both logs and their blobs | `Seal <n> created: <hash>` |
-| `verify` | Fully re-verify the archive, optionally requiring a known seal | counts and the latest seal hash |
-| `fsck` | Fully verify the archive and print a health report | a report |
+- **Append-only.** Every change is a new line, an *event*. Nothing is edited
+  in place: revising a node appends a *supersede* event and keeps the old one.
+- **Signed.** Every event is signed with its author's Ed25519 key.
+- **Hash-chained.** Every event commits to the previous one, so any change to
+  the history is detected.
+- **Content-addressed.** Contents live in `blobs/`, each file named after the
+  hash of its bytes.
+- **Two networks.** The *base* log is the knowledge graph; the *meta* log
+  annotates it with tags. Meta commits to base, never the reverse: a base can
+  be shipped alone, and anyone can annotate it with their own key.
+- **Sealed.** A *seal* is a signed checkpoint of the whole archive; its hash
+  is one short string you can publish so others can check their copy.
+- **Self-describing.** `ik manifest` writes `SPEC.md`, `MANIFEST.json` and
+  `test_vectors.json` into the archive, so it can be read without this
+  software.
 
 ## Install
 
 ```bash
-uv tool install 'indiek[cli]'   # the ik command (adds rich + python-dotenv)
-uv add indiek                   # the SDK only
+uv tool install 'indiek[cli]'   # the ik command (adds rich and python-dotenv)
+uv add indiek                   # the SDK only, as a dependency of your project
+pip install 'indiek[cli]'       # with pip
 ```
 
-Until the PyPI release, install from a checkout of this folder:
-`uv tool install --editable '.[cli]'`.
+The SDK depends only on `pydantic` and `pynacl`. The `cli` extra adds `rich`
+(tables) and `python-dotenv` (configuration files). To install from a local
+copy of this folder: `uv tool install --editable '.[cli]'`.
 
-## Invocation shape
+## Quickstart
 
+### With the SDK
+
+```python
+from indiek import Archive, Author
+
+author = Author.generate()  # keep author.seed_hex secret: it is your signing key
+ik = Archive.open("my-archive", author=author)  # the folder is created on first write
+
+theorem = ik.create_node("Gödel's first incompleteness theorem", title="Gödel I")
+statement = ik.create_node(
+    "Any consistent formal system able to express arithmetic is incomplete."
+)
+ik.create_edge(statement, theorem, "states")
+
+tag = ik.create_tag("theorem", "A proven statement", kind="node")
+ik.set_tag(tag, theorem)
+
+print(ik.index.alias_of(theorem))  # e1
+seal = ik.seal()
+print(seal.hash)  # sha256:… — the one string that commits to the whole archive
 ```
+
+### With the CLI
+
+```bash
+ik keygen --write                                  # writes IK_AUTHOR_PRIVATE_KEY to .env
+ik config --set-archive-path ~/archives/my-archive # writes IK_ARCHIVE_PATH to .env
+
+ik create_node --content "Gödel's first incompleteness theorem" --title "Gödel I"  # e1
+ik create_node --content "Any consistent formal system … is incomplete."           # e2
+ik create_edge --source-node e2 --target-node e1 --content "states"                # e3
+ik create_node_tag --name theorem --description "A proven statement"              # m1
+ik set_tag --tag m1 --id e1                                                        # m2, m3
+ik read --mini
+ik seal          # prints: Seal 1 created: sha256:…
+ik verify        # re-checks everything
+```
+
+## Concepts
+
+**Authors and keys.** An author is an Ed25519 key pair. The 32-byte *seed*
+(64 hex characters) is the only secret; never share it or put it in an
+archive. The 64-hex *public key* appears as `header.author` in every event the
+author signs. Without a key an archive can only be read.
+
+**Identifiers and aliases.** Every node, edge and tag has a UUIDv7. Opening
+an archive also assigns short *aliases* by replaying the logs in order:
+
+- base network: `e1`, `e2`, … for **both** nodes and edges, in creation order;
+- meta network: `m1`, `m2`, … for tags, representations **and** tag
+  assignments (so `m` numbers are not a tag counter);
+- supersede and transcription events allocate no alias.
+
+Aliases are a convenience of the projection; they are never written in the
+archive. Anywhere an ID is expected, a UUID, a UUID string or an alias works.
+
+**Resource types.** A node's content is either *managed* (stored in the blob
+store; the default), a *uri* (an external link, recorded but never fetched),
+or a *local_file* (a pointer to a file on this machine plus its size and
+SHA-256, so a later change can be detected; the file is not copied).
+
+**Media types.** Managed and local-file content must use an archival-safe
+media type: `text/plain; charset=utf-8`, `text/markdown; charset=utf-8`,
+`image/tiff`, `image/png`, `image/jpeg`, `application/pdf; profile=pdfa`.
+Edges always carry `text/plain` content.
+
+**Revisions.** `supersede_node` / `supersede_edge` append new content for an
+existing item, which keeps its UUID and alias. Only the item's creator may
+supersede it; to disagree with someone else's node, create your own node and
+an edge to theirs. Edge endpoints never change.
+
+**Tags.** A tag is defined once (`create_tag`) for nodes or for edges, then
+assigned (`set_tag`). The first assignment to an item also creates a
+*representation* of it in the meta network. Only a tag's author may assign
+it; anyone may define their own tags.
+
+**Transcriptions.** A transcription is a signed attestation, appended to a
+log, that says "I verified this log up to head H". Algorithms age;
+generations of transcriptions under newer algorithms keep a chain of custody
+alive.
+
+**Seals.** A seal is a signed checkpoint of both logs and of the blobs they
+reference. Publish its hash; anyone can then check a copy with
+`ik verify --expect <hash>`.
+
+## Python SDK reference
+
+The public API is everything exported by `indiek` (`indiek.__all__`). The
+modules under `indiek.core` and `indiek.ops` are the building blocks behind
+it; they are documented in their docstrings but are not part of the stable
+API.
+
+```python
+from indiek import (
+    Archive, Author,                                     # entry points
+    ArchiveIndex, IndexedItem, ItemKind, TranscriptionRecord,  # the projection
+    Seal, FsckReport, IngestResult,                      # results
+    VerificationLevel, MediaType, ResourceType, EventType, MetaEventType,
+    IndieKError, IntegrityError, UnknownItemError, AuthorshipError, ArchiveRuleError,
+    __version__,
+)
+```
+
+### `Author`
+
+```python
+from indiek import Author
+
+author = Author.generate()                           # a new random key
+same = Author.from_seed_hex(author.seed_hex)         # load from 64 hex characters
+assert same.public_key_hex == author.public_key_hex  # what events record as author
+```
+
+| Member | Description |
+| --- | --- |
+| `Author.generate()` | New random Ed25519 identity. |
+| `Author.from_seed_hex(seed_hex)` | Load from a 32-byte seed as 64 hex characters; `ValueError` if malformed. |
+| `public_key_hex` | Lowercase hex public key (64 characters). |
+| `seed_hex` | Lowercase hex seed — the secret. |
+| `sign(message: bytes) -> bytes` | Raw 64-byte Ed25519 signature. |
+
+`repr(author)` shows only the public key.
+
+### `Archive.open`
+
+```py
+Archive.open(
+    path,                    # str | Path; "~" is expanded; may not exist yet
+    author=None,             # Author | None; None opens read-only
+    *,
+    verify="incremental",    # "none" | "incremental" | "full" (or VerificationLevel)
+    trusted_seal=None,       # a seal hash you obtained separately
+    cache_dir=None,          # verification cache; default: IK_CACHE_DIR or the OS cache dir
+) -> Archive
+```
+
+Opening reads and verifies both event logs, the blob references and the seal
+log (see [Verification levels](#verification-levels-and-the-trust-model)),
+then builds the in-memory index. A folder that does not exist is an empty
+archive; it is created on the first write. Raises `IntegrityError` if the
+archive is corrupted or tampered with, or if `trusted_seal` is not in its
+seal log; `ValueError` for an unknown `verify` level.
+
+```python
+from indiek import Archive, VerificationLevel
+
+reader = Archive.open("my-archive")                        # read-only, incremental
+everything = Archive.open("my-archive", verify="full")     # checks every signature
+raw = Archive.open("my-archive", verify=VerificationLevel.NONE)  # parse only, read-only
+trusted = Archive.open("my-archive", trusted_seal=seal.hash)
+```
+
+### Reading
+
+| Member | Description |
+| --- | --- |
+| `path` | The archive folder. |
+| `author` | The `Author` used for writes, or `None`. |
+| `verification` | The `VerificationLevel` the archive was opened with. |
+| `head` / `meta_head` | Hash (`sha256:…`) of the last base / meta event, or `None`. |
+| `index` | The `ArchiveIndex`: current state of every item. |
+| `events(network="base")` | Iterate the raw events (dicts) of the `"base"` or `"meta"` log, in order. |
+| `seals()` | Every verified `Seal`, oldest first. |
+| `refresh(level=None)` | Re-read and re-verify from disk (e.g. after another process wrote). |
+
+Items are looked up by alias or UUID; their `body` is the JSON body of their
+latest event. Content is read from the blob store, which re-hashes every blob
+it returns:
+
+```python
+from indiek import ItemKind
+
+item = reader.index.get("e1")
+print(item.kind, item.alias, item.body["title"])  # node e1 Gödel I
+print(reader.index.store.blobs.get_text(item.body["blob_hash"]))
+
+for item in reader.index.items.values():
+    if item.kind is ItemKind.EDGE:
+        source = reader.index.get(item.body["source_node"])
+        target = reader.index.get(item.body["target_node"])
+        label = reader.index.store.blobs.get_text(item.body["blob_hash"])
+        print(f"{source.alias} --{label}--> {target.alias}")  # e2 --states--> e1
+
+for event in reader.events("meta"):
+    print(event["body"]["event_type"])  # create_node_tag, create_node_representation, …
+```
+
+Use `blobs.get(hash)` for binary content (bytes). Both raise
+`IntegrityError("File corrupted or missing! (blob …)")` if the file is gone
+or altered.
+
+### Writing nodes and edges
+
+Every write needs an author (`AuthorshipError: An author is required to write
+to an archive`) and an archive not opened with `verify="none"`
+(`ArchiveRuleError: Writes need verification: …`). Each write appends signed
+events and refreshes `index`, so the new item's alias is usable immediately.
+
+```python
+from pathlib import Path
+from indiek import MediaType, ResourceType
+
+note = ik.create_node("# Proof sketch\n\nBy diagonalisation.", media_type=MediaType.TEXT_MARKDOWN)
+diagram = ik.create_node(
+    Path("figures/diagram.png").read_bytes(), media_type=MediaType.IMAGE_PNG, title="Diagram"
+)
+paper = ik.create_node(
+    resource_type=ResourceType.URI,
+    uri="https://arxiv.org/abs/1234.5678",
+    title="Survey",
+    media_type=MediaType.APPLICATION_PDF_A,  # optional hint
+)
+scan = ik.create_node(resource_type=ResourceType.LOCAL_FILE, path="scans/page.tiff")
+proves = ik.create_edge(note, statement, "sketches a proof of")
+```
+
+`create_node(content=None, *, media_type=None, title=None, resource_type=ResourceType.MANAGED, uri=None, path=None) -> UUID`
+
+- `managed` (default): `content` is stored in the blob store. A `str` is
+  always taken literally — never read as a file path — and defaults to
+  `text/plain`; `bytes` require `media_type`. Errors: `ArchiveRuleError`
+  `content is required for managed nodes`, `media_type is required for bytes content`.
+- `uri`: records `uri`, never fetched; `media_type` is an optional hint.
+  Error: `uri is required for uri nodes`.
+- `local_file`: records the absolute resolved `path`, the file size, its
+  SHA-256 and the time; the media type is detected from the file name
+  (`.txt`, `.md`, `.png`, `.jpg`/`.jpeg`, `.tif`/`.tiff`) and the title
+  defaults to the file stem. Errors: `path is required for local_file nodes`,
+  `Local file does not exist or is not a regular file: <path>`,
+  `Unsupported archival media type for <path>`.
+
+`create_edge(source, target, content) -> UUID` — a directed edge between two
+existing base **nodes**, carrying `content` as `text/plain` (stored
+verbatim). Endpoints are checked before anything is written:
+`UnknownItemError` `Unknown ID or alias '<ref>'`,
+`SOURCE NODE <uuid> NOT FOUND IN ARCHIVE`, `TARGET NODE <uuid> NOT FOUND IN ARCHIVE`
+(edges and tags can never be endpoints). Self-loops are allowed.
+
+### Revising: supersede
+
+```python
+ik.supersede_node(theorem, "Gödel's *first* incompleteness theorem (1931)")
+ik.supersede_node(theorem, "Gödel's first incompleteness theorem", title="Gödel 1931")
+ik.supersede_edge("e3", "states, in modern terms")
+```
+
+`supersede_node(node, content, *, title=None, media_type=MediaType.TEXT_MARKDOWN) -> UUID`
+replaces a node's content with a managed blob; `title=None` keeps the current
+title. `supersede_edge(edge, content) -> UUID` replaces an edge's
+`text/plain` content; endpoints and title are kept. Both return the item's
+UUID, which does not change. Errors: `UnknownItemError`
+`Node '<ref>' does not exist in this archive`,
+`ID '<ref>' does not reference a base-network node` (and the edge
+equivalents); `AuthorshipError` `Only the author of Node '<ref>' may supersede it`
+(checked before anything is written).
+
+### Tags
+
+```python
+proof = ik.create_tag("proof", "A proof relation", kind="edge")
+ik.set_tag(proof, proves)
+print(ik.index.items[proves].tags == {proof})  # True
+```
+
+`create_tag(name, description, *, kind) -> UUID` defines a tag for
+`kind="node"` or `kind="edge"` (`ArchiveRuleError` otherwise). Names are not
+unique.
+
+`set_tag(tag, target) -> UUID` assigns a tag to a base node or edge and
+returns the UUID of the assignment (a meta edge). The first assignment to a
+target also appends a representation of it. Errors:
+
+| Error | Message |
+| --- | --- |
+| `UnknownItemError` | `Unknown ID or alias '<ref>'`; `UUID is not part of any network (neither base nor meta)` |
+| `ArchiveRuleError` | `<uuid> is not a tag node`; `UUID should not be an item from the meta network` |
+| `AuthorshipError` | `Only the tag's author may use this operation` |
+| `ArchiveRuleError` | `A node tag should point to a node representation`; `An edge tag should point to an edge representation` |
+
+When the kind check fails on a first assignment, the representation already
+written stays in the meta log (harmless, reused later) and a WARNING says so.
+Assigning the same tag twice appends a second assignment; the item's tag set
+is unchanged.
+
+### Bulk import, export and the manifest
+
+```python
+result = ik.ingest(input_folder="more")  # one managed node per folder entry
+cites = result.node_ids[0]
+Path("edges.csv").write_text(f"{cites},{theorem},cites\n", encoding="utf-8")
+ik.ingest(edges_file="edges.csv")        # one edge per line: source,target,content
+
+ik.export_graphml("theorems.graphml", tags=[tag])  # base network as GraphML
+ik.write_manifest()                                # MANIFEST.json, SPEC.md, test_vectors.json
+```
+
+- `ingest(*, input_folder=None, edges_file=None) -> IngestResult` — every
+  entry of `input_folder` (sorted, not recursive) becomes a managed node
+  titled by its stem (text files as text, images as bytes); then every line
+  `source,target,content` of `edges_file` becomes an edge (split on the
+  first two commas; endpoints may be UUIDs or aliases). Stops at the first
+  error; earlier writes are kept. See [Known limitations](#known-limitations).
+- `export_graphml(output_path, tags=()) -> Path` — writes the base network as
+  pretty-printed, directed GraphML (overwritten). With `tags`, keeps items
+  carrying at least one of them.
+- `write_manifest() -> Path` — writes `MANIFEST.json` (layout, rules, JSON
+  Schemas of every log line, algorithms used, the current author's key) and
+  copies `SPEC.md` and `test_vectors.json` at the archive root; returns the
+  manifest path. Works without an author.
+
+These three, like `seal()`, `verify()` and `fsck()`, run a `full`
+verification first.
+
+### Attesting: transcriptions
+
+```python
+new_head = ik.transcribe(note="re-verified before publication")
+record = ik.index.transcriptions["base"][-1]
+print(record.position, record.body["verified_count"], new_head == ik.head)
+```
+
+`transcribe(network="base", *, note=None) -> str` appends to the `"base"` (or
+`"meta"`) log a `transcription` event recording that log's verified head,
+length and algorithms, and returns the new head. Any author may transcribe.
+`ArchiveRuleError: Nothing to transcribe: the <network> log is empty`.
+
+### Seals, verification and health
+
+```python
+second = ik.seal()
+assert ik.verify(expect=seal.hash) == seal   # the first seal is still in the log
+assert ik.verify() == second                 # without expect: the latest seal
+report = ik.fsck()
+print(report.base_count, report.seal_count, report.unreferenced_blobs)
+```
+
+| Method | Description |
+| --- | --- |
+| `seal() -> Seal` | Fully verify, then append a seal of both logs and their blobs. Any author may seal. `ArchiveRuleError`: `Nothing to seal: the archive is empty`, `Nothing to seal: the archive is unchanged since seal <n>`, `Cannot seal: <n> unreferenced blob(s) … Delete them and seal again: <paths>`. |
+| `verify(*, expect=None) -> Seal \| None` | Re-read and fully re-verify from disk. Returns the seal whose hash is `expect` (else `IntegrityError: Expected seal not found in seal log`) or, without `expect`, the latest seal (`None` if there is none). |
+| `fsck() -> FsckReport` | Fully verify and report on the archive. |
+| `unreferenced_blobs() -> list[Path]` | Files in the blob store that no event references (safe to delete). |
+| `seals() -> list[Seal]` | Every verified seal, oldest first. |
+
+### The index
+
+`ArchiveIndex` (`archive.index`) is the replayed state of the archive:
+
+| Member | Description |
+| --- | --- |
+| `items: dict[UUID, IndexedItem]` | Every node, edge, tag, representation and tag assignment. |
+| `aliases: dict[str, UUID]` | `e{n}` / `m{n}` → UUID. |
+| `resolve(ref) -> UUID` | Alias, UUID string or UUID → UUID (`UnknownItemError` for garbage; a well-formed UUID is not checked). |
+| `get(ref) -> IndexedItem` | The item (`UnknownItemError` if absent). |
+| `alias_of(uuid) -> str` | The item's alias. |
+| `representation_of(uuid) -> UUID \| None` / `underlying_of(uuid) -> UUID` | Base item ↔ its meta representation. |
+| `transcriptions: dict[str, list[TranscriptionRecord]]` | Per network, `author`, `position` (1-based) and `body`. |
+| `head` / `meta_head` | As on `Archive`. |
+| `store` | The verified on-disk store; `store.blobs` reads content (`get`, `get_text`). |
+
+`IndexedItem` fields: `id`, `alias`, `kind` (an `ItemKind`), `author` (the
+creator's public key), `body` (dict of the latest event body), `tags` (set of
+tag UUIDs, base items only); properties `is_meta`, `is_edge`, `is_tag`.
+
+`ItemKind`: `NODE`, `EDGE`, `NODE_TAG`, `EDGE_TAG`, `NODE_REPRESENTATION`,
+`EDGE_REPRESENTATION`, `NODE_TAG_ASSIGNMENT`, `EDGE_TAG_ASSIGNMENT`.
+
+### Result types
+
+- `Seal`: `hash`, `seq`, `prev_seal_hash`, `base_head`, `base_count`,
+  `meta_head`, `meta_count`, `blob_root`, `time`, `key`.
+- `FsckReport`: `path`, `base_count`, `base_head`, `meta_count`, `meta_head`,
+  `seal_count`, `latest_seal`, `transcriptions` (`{"base": n, "meta": m}`),
+  `blob_files`, `referenced_blobs`, `unreferenced_blobs` (paths),
+  `untagged_representations`.
+- `IngestResult`: `node_ids`, `edge_ids` (UUIDs in creation order).
+
+### Enumerations
+
+- `VerificationLevel`: `NONE`, `INCREMENTAL`, `FULL` (values `"none"`, …).
+- `ResourceType`: `MANAGED`, `URI`, `LOCAL_FILE`.
+- `MediaType`: `TEXT_PLAIN`, `TEXT_MARKDOWN`, `IMAGE_TIFF`, `IMAGE_PNG`,
+  `IMAGE_JPEG`, `APPLICATION_PDF_A` (values are the media type strings).
+- `EventType` (base): `create_node`, `create_edge`, `supersede_node`,
+  `supersede_edge`, `transcription`.
+- `MetaEventType`: `create_node_tag`, `create_edge_tag`,
+  `create_node_representation`, `create_edge_representation`,
+  `set_node_tag`, `set_edge_tag`, `transcription`.
+
+### Errors
+
+```text
+IndieKError
+├── IntegrityError       the archive on disk is corrupted, tampered with or inconsistent
+├── UnknownItemError     an ID or alias does not resolve (also a ValueError)
+├── AuthorshipError      the current author may not do this (also a ValueError)
+└── ArchiveRuleError     the write would break a rule of the format (also a ValueError)
+```
+
+```python
+from indiek import IndieKError, UnknownItemError
+
+try:
+    ik.create_edge("e1", "e99", "dangling")
+except UnknownItemError as exc:
+    print(exc)  # Unknown ID or alias 'e99'
+except IndieKError:
+    raise
+```
+
+Every `IntegrityError` message is listed in
+[Integrity verification](#integrity-verification) and in `SPEC.md`.
+
+## `ik` CLI reference
+
+### Invocation
+
+```text
 ik [--dot-env PATH] [--logging-level LEVEL] [--verify LEVEL] [--trust-seal HASH] <command> [flags]
 ```
 
-Global flags apply to every command and must precede the subcommand.
+Global flags apply to every command and must precede it.
 
-| Flag | Required | Default | Meaning |
-| --- | --- | --- | --- |
-| `--dot-env` | no | `.env` | Dotenv file to load. Loaded with `override=False`, so real environment variables win. |
-| `--logging-level` | no | `WARNING` | A `logging` level name, case-insensitive: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Any other name exits with status 2. |
-| `--verify` | no | `incremental` | Verification level when opening the archive: `none`, `incremental` or `full` (case-insensitive). See [Verification levels and the trust model](#verification-levels-and-the-trust-model). |
-| `--trust-seal` | no | — | A seal hash you obtained through a separate, trusted route; the signatures of the events it covers are not re-checked. |
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--dot-env` | `.env` | Dotenv file to load. Real environment variables win over it. |
+| `--logging-level` | `WARNING` | `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`, case-insensitive. |
+| `--verify` | `incremental` | `none`, `incremental` or `full`; see [Verification levels](#verification-levels-and-the-trust-model). |
+| `--trust-seal` | — | A seal hash you obtained separately; the signatures it covers are not re-checked. |
 
-All log output is written to **stderr**. Stdout carries only command output
-(printed IDs, tables, `config` / `keygen` lines), so it is safe to pipe.
+Logs go to **stderr**; stdout carries only command output (IDs, tables,
+reports), so it is safe to pipe.
+
+| Command | Purpose | Prints on success |
+| --- | --- | --- |
+| [`keygen`](#ik-keygen) | Generate an author key | `IK_AUTHOR_PRIVATE_KEY=<seed>` (nothing with `--write`) |
+| [`config`](#ik-config) | Show or set `IK_ARCHIVE_PATH` | `IK_ARCHIVE_PATH=<value>` |
+| [`create_node`](#ik-create_node) | Add a node (`managed`, `uri`, `local_file`) | `Node created: <uuid>` |
+| [`create_edge`](#ik-create_edge) | Add a directed edge between two nodes | `Edge created: <uuid>` |
+| [`supersede_node`](#ik-supersede_node) | Replace a node's content | `Node superseded: <uuid>` |
+| [`supersede_edge`](#ik-supersede_edge) | Replace an edge's content | `Edge superseded: <uuid>` |
+| [`create_node_tag`](#ik-create_node_tag-and-ik-create_edge_tag) | Define a tag for nodes | nothing |
+| [`create_edge_tag`](#ik-create_node_tag-and-ik-create_edge_tag) | Define a tag for edges | `Meta node created: <uuid>` |
+| [`set_tag`](#ik-set_tag) | Assign a tag to a node or edge | nothing |
+| [`read`](#ik-read) | Print both event logs as tables | two tables |
+| [`export`](#ik-export) | Write the base network as GraphML | nothing |
+| [`ingest`](#ik-ingest) | Bulk-create nodes and edges | nothing |
+| [`transcribe`](#ik-transcribe) | Attest a log with a `transcription` event | `Transcription appended: <hash>` |
+| [`seal`](#ik-seal) | Append a signed seal of the whole archive | `Seal <n> created: <hash>` |
+| [`verify`](#ik-verify) | Fully re-verify, optionally against a known seal | counts and the latest seal |
+| [`fsck`](#ik-fsck) | Fully verify and print a health report | a report |
+| [`manifest`](#ik-manifest) | Write `MANIFEST.json`, `SPEC.md`, `test_vectors.json` | `MANIFEST written to: <path>` |
 
 ### Environment
 
-| Variable                | Meaning                                                                    |
-| ----------------------- | -------------------------------------------------------------------------- |
-| `IK_ARCHIVE_PATH`       | Root directory of the archive.                                             |
-| `IK_AUTHOR_PRIVATE_KEY` | Current author's Ed25519 private key: a 32-byte seed as 64 hex characters. |
-| `IK_CACHE_DIR`          | Optional. Directory of the local verification cache (default: your OS cache directory, see [Verification levels and the trust model](#verification-levels-and-the-trust-model)). |
+| Variable | Meaning |
+| --- | --- |
+| `IK_ARCHIVE_PATH` | Root folder of the archive (`~` is expanded). |
+| `IK_AUTHOR_PRIVATE_KEY` | The author's Ed25519 seed, 64 hex characters. |
+| `IK_CACHE_DIR` | Optional. Directory of the local verification cache. |
 
-Which commands need what:
+Both main variables can live in the dotenv file (`ik keygen --write`,
+`ik config --set-archive-path`).
 
-- `config` and `keygen` need neither variable.
-- `read`, `export` and `manifest` need only `IK_ARCHIVE_PATH`. Without a key the
-  archive is opened read-only and `manifest` lists no author.
-- Every other command also needs the key; without it the write fails with
-  `AuthorshipError: An author is required to write to an archive`.
-
-A missing `IK_ARCHIVE_PATH` exits with status 2; a leading `~` is expanded. A
-malformed key (non-hex, or not 32 bytes) exits with status 1 and
-`ik: error: IK_AUTHOR_PRIVATE_KEY is invalid: <reason>`; the key itself is never printed.
-Generate a key with [`ik keygen`](#ik-keygen).
+- `keygen` and `config` need neither variable.
+- `read`, `export`, `manifest`, `verify` and `fsck` need only
+  `IK_ARCHIVE_PATH`; without a key the archive is opened read-only (and
+  `manifest` lists no author).
+- Every other command also needs the key; without it:
+  `ik: error: An author is required to write to an archive`.
 
 ### Errors and exit codes
 
 | Exit status | Meaning |
-| ----------- | ------- |
-| `0` | Success. |
-| `1` | The command failed (integrity, unknown item, authorship, archive rule, invalid key). One line `ik: error: <message>` is printed on stderr, with no traceback; `--logging-level DEBUG` adds the traceback. |
-| `2` | Usage error from argument parsing: missing or invalid flag, or `IK_ARCHIVE_PATH` not set. |
-
-Messages quoted below as `ErrorClass: message` are the exceptions raised by the
-Python SDK (`indiek.IndieKError` and subclasses); the CLI prints the same
-`message` after `ik: error:`.
-
-### Integrity verification
-
-Every command that opens the archive (all but `config` and `keygen`) walks
-the event log, the meta event log **and** the seal log before running, at the
-level chosen with `--verify` (default `incremental`, see
-[Verification levels and the trust model](#verification-levels-and-the-trust-model)).
-`verify`, `fsck`, `seal`, `ingest`, `export` and `manifest` always verify
-fully.
-Every event names its algorithms in `header.hash_alg` (`sha256`) and
-`header.sig_alg` (`ed25519`). Hashes and signatures are written with the
-algorithm as a prefix: `prev_hash` and archive heads are `sha256:<hex>`,
-signatures are `ed25519:<hex>`, blob hashes are `sha256:<hex>`.
-
-Verification raises `IntegrityError` with one of these messages:
-
-- `Unsupported algorithm …` — `hash_alg` or `sig_alg` is missing or unknown.
-- `Algorithm mismatch …` — the `signature`, or a non-null `prev_hash`, does not carry the header's algorithm as prefix (a bare hex value included).
-- `Chain broken!` — a `header.prev_hash` does not match the canonical hash of the preceding event.
-- `Data tampered or bad author!` — the Ed25519 signature does not verify against `header.author`.
-- `File corrupted or missing!` — an event's `blob_hash` is absent from the blob store or its bytes hash to something else.
-- `Meta anchor does not match base history` — a meta event's anchor (see below) names a base event that does not exist or hashes to something else.
-- `Meta anchor goes back in base history` — a meta event's `base_seq` is lower than the previous meta event's.
-- `Transcription does not match chain` — a `transcription` event's `verified_head` is not the hash of event number `verified_count` of its log (see [`ik transcribe`](#ik-transcribe)).
-- `Seal chain broken!` — a seal's `seq` is not its position, its `prev_seal_hash` is not the hash of the previous seal (or the first seal is missing), its signature does not verify, or it is malformed.
-- `Seal does not match logs!` — a seal names a base or meta tip that is not in the verified log (the log was rewritten or truncated after the seal, or `meta/` is missing).
-- `Seal goes back in log history` — a seal's base or meta count is lower than the previous seal's.
-- `Blob set does not match seal!` — a seal's `blob_root` is not the Merkle root of the blobs referenced by the events it covers (see [Seals and the blob store](#seals-and-the-blob-store)).
-
-**Meta anchors.** Every meta event header records `base_seq`, the number of
-base events its author had verified, and `base_head`, the hash of base event
-number `base_seq` (`null` when `base_seq` is 0). The base log is verified
-first; if its author later rewrites or truncates it, the base alone still
-verifies but every meta event anchored past the change fails. The anchor is
-one-way: base events never mention the meta log, so an archive shipped
-without `meta/` is valid on its own (drop `seals/` too: seals commit to both
-logs), and anyone may annotate someone else's base with their own key.
-
-Building the index then raises `IntegrityError` if the logs are inconsistent:
-
-- `Supersede event references unknown item <id>`
-- `Supersede event type does not match item <id>`
-- `Supersede edge events cannot change endpoints`
-- `Supersede by a non-author of item <id>`
-- `Tag assignment references an unknown representation`
-
-A successful verification logs `ARCHIVE INTEGRITY VERIFIED (<level>)` at
-`INFO`, on stderr (visible with `--logging-level info`).
-
-Some conditions are reported as a `WARNING` on stderr but do **not** fail
-verification: unreferenced blobs, a seal of an empty archive, and a seal that
-repeats the previous one (see below).
-
-### Seals and the blob store
-
-A **seal** is a signed snapshot of the whole archive, appended as one line to
-`seals/seals.ndjson`. It records:
-
-- the **base tip** and the **meta tip**: how many events each log had
-  (`count`) and the hash of the last of them (`head`);
-- `blob_root`: one hash summarising **every blob those events reference**
-  (an RFC 6962 Merkle root, the same construction as Certificate Transparency);
-- `seq` (1, 2, 3, …), `prev_seal_hash` (the previous seal's hash, so seals
-  form their own chain), `time`, the sealing `key` and its signature `sig`.
-
-The **seal hash** (`sha256:…`, printed by `ik seal`) is the one short string
-that commits to everything in the archive at that moment. Publish it (on a
-web page, in an email, in a printed book); anyone holding a copy of the
-archive can then check that copy against it with
-`ik verify --expect <seal hash>`. A seal cannot prove that it is the *latest*
-one: freshness always needs such an outside reference.
-
-**What is checked, every time the archive is opened.** Every seal, not only
-the latest, is checked exactly:
-
-1. it is the next link of the seal chain and its signature verifies;
-2. its base and meta tips exist, with those hashes, in the verified logs;
-3. its counts are not lower than the previous seal's;
-4. its `blob_root` equals the Merkle root recomputed from the blobs referenced
-   by the events it covers.
-
-Adding nodes, edges or tags after a seal is normal and keeps every existing
-seal valid: a seal only speaks about the events up to its own counts. Seal
-again whenever you want a new checkpoint.
-
-**Unreferenced blobs.** A blob is *unreferenced* when it sits under
-`blobs/sha256/` but no event points to it. Two things produce one:
-
-- an **interrupted write**: the program stopped after saving the file and
-  before recording the event that uses it (a crash, a killed process, a full
-  disk);
-- a file **added by hand**, or by another tool, possibly to smuggle content
-  into the archive.
-
-Unreferenced blobs are never part of the knowledge graph and no seal covers
-them. They are handled like git handles dangling objects:
-
-- **Opening the archive warns, it does not fail.** Every command logs, at
-  `WARNING` level on stderr,
-  `<n> unreferenced blob(s) in <blob dir> (no event uses them; delete them before sealing): <names>`,
-  and still runs (silence it with `--logging-level ERROR`). An interrupted write can therefore never make an
-  archive unusable, and a file slipped in after a seal is always reported.
-- **Sealing is refused while any exist**, with
-  `ArchiveRuleError: Cannot seal: <n> unreferenced blob(s) … Delete them and seal again: <paths>`.
-  A seal is a statement about the whole archive; refusing keeps it from
-  silently covering a file nobody accounted for.
-- **They are safe to delete**: no event and no seal depends on them. Delete
-  the paths listed in the warning or the error, or list them from Python with
-  `Archive.open(path).unreferenced_blobs()`. If you want to keep the content,
-  add it as a node instead (the blob is reused, not duplicated).
-
-What this does **not** relax: a blob that an event references is re-hashed on
-every open, and a missing or altered one still fails with
-`File corrupted or missing!`, seal or no seal.
-
-**Read-time warnings for unusual seals.** `ik seal` refuses to seal an empty
-archive and to seal an archive unchanged since the latest seal. A seal log
-written by other software may still contain such seals; they are valid, and
-opening the archive only logs, at `WARNING` level,
-`Seal <n> seals an empty archive` or
-`Seal <n> repeats seal <m> (the archive did not change)`.
-
-**Shipping parts of an archive.** `seals/` commits to the base and meta logs
-together: ship it only with both `events/` and `meta/`. Without `meta/`,
-the seals fail with `Seal does not match logs!`; drop `seals/` as well and the
-base verifies on its own.
-
-### Verification levels and the trust model
-
-Checking an archive costs time, mostly the Ed25519 signature check of every
-event and the re-hashing of every blob. Measured on a 10,000-event archive:
-
-| Level (`--verify`, `Archive.open(verify=…)`) | What it does | 10k events |
-| --- | --- | --- |
-| `full` | Checks everything; ignores the cache, then refreshes it. | ≈ 11 s |
-| `incremental` (default) | Re-reads every line and recomputes every hash link, meta anchor, transcription and seal, but skips the signature checks and blob re-hashing that a **trusted source** already vouches for. Everything else is checked as in `full`. | ≈ 1 s once cached |
-| `none` | Only parses (debugging, recovering a damaged archive). The archive is **read-only**: any write fails with `Writes need verification: this archive was opened with verify='none'`. | ≈ 0.3 s |
-
-`ik verify`, `ik fsck`, `ik seal`, `ik ingest`, `ik export` and `ik manifest`
-(and the SDK's `verify()`, `fsck()`, `seal()`, `ingest()`, `export_graphml()`,
-`write_manifest()`) always run a `full` check first, whatever `--verify` says.
-At `incremental`, the error you get for a damaged archive is exactly the one
-`full` would report: as soon as anything does not match what a trusted source
-promised, the reader falls back to checking everything.
-
-**What may be skipped, and on what basis.** Skipping is allowed on exactly
-two grounds:
-
-1. **(a) Your own machine checked it before (the local cache).** After a
-   successful check, the reader records, per log: *"the signatures of events
-   1…N were valid, and event N hashed to H"*, and for blobs each verified
-   file's size and modification time. Next time, it recomputes the hash chain
-   anyway (cheap); if event N still hashes to H, events 1…N are byte-for-byte
-   the ones already checked, so their signatures are not checked again. If
-   anything changed, the cache simply does not apply and the log is checked in
-   full. A blob file is re-hashed only if its size or modification time
-   changed.
-2. **(b) A seal hash you obtained separately (`--trust-seal HASH`,
-   `Archive.open(…, trusted_seal=HASH)`).** The author, or an independent
-   third party, publishes the archive's seal hash through another route (their
-   HTTPS website, a signed email, a printed page). The seal with that hash must
-   be in the seal log, otherwise the archive is rejected with
-   `Expected seal not found in seal log`. Every event it covers is still
-   re-hashed and must chain exactly to the seal's tips, which proves they are
-   the very bytes that were sealed; only their signature checks are skipped
-   (`seal()` checked them all before sealing). Events after that seal are
-   fully checked. A seal commits to blob *hashes*, not to the bytes on your
-   disk, so blobs are still re-hashed (or skipped per (a)).
-
-**Never on the basis of a seal found in the archive itself.** Any key may
-seal, so a seal you did not obtain separately proves nothing about who checked
-what. Example: Alice sends you her archive; Mallory intercepts it, changes
-Alice's event #500 ("X is true" → "X is false"), re-links the events after it
-and appends a seal signed with *his own* key. He cannot re-sign event #500 as
-Alice, so a full check fails with `Data tampered or bad author!`. If readers
-trusted any seal in the log, they would skip exactly that check. IndieK
-therefore always **checks** seals found in the archive and never **trusts**
-them; only a hash you supply (b) is trusted. If you have Alice's real seal
-hash from her website, `--trust-seal` with it rejects Mallory's copy: his
-change breaks the chain before it reaches the seal's tips.
-
-**Where the cache lives.** Outside the archive, in your user cache directory,
-so nothing shipped with an archive can make you skip checks:
-
-| System | Directory |
 | --- | --- |
-| macOS | `~/Library/Caches/indiek/` |
-| Linux and others | `$XDG_CACHE_HOME/indiek/` (default `~/.cache/indiek/`) |
-| Windows | `%LOCALAPPDATA%\indiek\Cache\` |
+| `0` | Success. |
+| `1` | The command failed: integrity, unknown item, authorship, archive rule, invalid key. One line `ik: error: <message>` on stderr, no traceback (`--logging-level DEBUG` adds it). |
+| `2` | Usage error: missing or invalid flag, or `IK_ARCHIVE_PATH` not set. |
 
-Set `IK_CACHE_DIR` to use another directory. There is one small `state.json`
-per archive (in a sub-folder named after a hash of the archive's absolute
-path); it holds hashes, counts and file sizes/times, never content. Deleting
-it is always safe: the next open simply checks everything again. A
-`.ik-cache/` folder inside an archive is never read.
-
-**Caveats.**
-
-- The separate route for (b) must be authenticated: if an attacker controls
-  it, he publishes his own hash.
-- Trusting a seal hash means trusting that its sealer checked the archive
-  before sealing (IndieK's `seal()` always does).
-- No seal proves it is the *latest* one; freshness needs a recent publication.
-- Anyone who can write to your cache directory could make forged events skip
-  their signature checks, but such a person already controls your user
-  account (git trusts its own index the same way).
-- **Verify-on-read.** The blob cache cannot see bit rot that keeps a file's
-  size and modification time. Every blob is therefore re-hashed whenever it is
-  read (`IntegrityError: File corrupted or missing! (blob …)`), and
-  `ik verify` / `ik fsck` re-hash all of them.
-
-## Identifiers
-
-Every item is addressed by a UUIDv7. In addition, the index assigns
-human-friendly aliases by replaying the logs in order:
-
-- **Base network** — creations get `e1`, `e2`, `e3`, … in event order. The `e`
-  prefix is used for **both nodes and edges**; there is no `n` prefix. `e4` may
-  well be a node.
-- **Meta network** — creations get `m1`, `m2`, `m3`, …. Tags, representations
-  **and** `set_edge_tag` / `set_node_tag` events each consume a number, so
-  meta numbering is not a tag counter.
-- `supersede_*` events do not allocate a new alias; they replace the projection
-  of the existing one.
-
-Any flag documented as accepting an ID accepts either a UUID string or a
-human-friendly alias. A string that is neither a known alias nor a UUID raises
-`UnknownItemError: Unknown ID or alias '<ref>'` (a `ValueError`).
+A malformed key exits 1 with `ik: error: IK_AUTHOR_PRIVATE_KEY is invalid: <reason>`;
+the key itself is never printed. The messages are those of the SDK errors
+(see [Errors](#errors)).
 
 ---
 
-## `ik create_node`
+### `ik keygen`
 
-Appends a `create_node` event to the base event log.
+Generates a fresh Ed25519 author key. Needs neither a key nor an archive.
 
-| Flag | Required | Default | Meaning |
-| --- | --- | --- | --- |
-| `--content` | for `managed` only | — | Inline text, or a path to a supported file. |
-| `--title` | no | see below | Human-readable title stored in the event body. |
-| `--resource-type` | no | `managed` | One of `managed`, `uri`, `local_file`. |
-| `--uri` | for `uri` only | — | External URL. Never fetched. |
-| `--path` | for `local_file` only | — | Local file path. Never copied into the archive. |
-| `--media-type` | no | — | One of `text/plain; charset=utf-8`, `text/markdown; charset=utf-8`, `image/tiff`, `image/png`, `image/jpeg`, `application/pdf; profile=pdfa`. |
+| Flag | Meaning |
+| --- | --- |
+| `--write` | Store the seed in the `--dot-env` file (mode `600`) instead of printing it. |
+| `--force` | With `--write`, replace a key already in that file. The old key is lost. |
 
-Prints `Node created: <uuid>` on success.
+Without `--write`: prints `IK_AUTHOR_PRIVATE_KEY=<64 hex>` on stdout and
+`Public key: <hex>` on stderr. With `--write`: nothing on stdout; stderr
+names the file and the public key. If the file already holds a key and
+`--force` is absent, exits 1 and leaves it untouched. The seed is your
+signing identity: back it up privately, never share it.
 
-`--media-type` is validated by argparse `choices`: any other value exits with
-status 2 before the archive is touched.
+```bash
+ik --dot-env .env keygen --write
+```
 
-If `--title` is omitted and `--content` names an existing file, the title
-defaults to that file's stem — for **every** resource type, even `uri` and
-`local_file` nodes where `--content` is otherwise ignored.
+### `ik config`
 
-### `--resource-type managed` (default)
+Shows, and optionally sets, `IK_ARCHIVE_PATH` in the `--dot-env` file. Needs
+neither a key nor an existing archive.
 
-The content is copied into the archive's content-addressed blob store and the
-event records only `blob_hash` + `media_type`.
+| Flag | Meaning |
+| --- | --- |
+| `--set-archive-path` | Archive path to write into the dotenv file (stored single-quoted). |
 
-`--content` is interpreted as follows:
+Prints `IK_ARCHIVE_PATH=<value>` or `IK_ARCHIVE_PATH is not set`; when
+setting, then `IK_ARCHIVE_PATH=<new path>`.
 
-- If it names an existing file: the file is read. `text/plain` and
-  `text/markdown` files are read as UTF-8 text; other supported types are read
-  as bytes. The media type is inferred from the filename via `mimetypes`, and
-  only `text/plain`, `text/markdown`, `image/jpeg`, `image/png`, `image/tiff`
-  are accepted — anything else raises
-  `ValueError: Unsupported archival media type for <path>`. Note that
-  `application/pdf; profile=pdfa` is a legal media type in the format but is
-  **not** reachable through file detection.
-- Otherwise it is treated as literal UTF-8 text with media type `text/plain`.
+```bash
+ik config --set-archive-path ~/archives/my-archive
+```
 
-**`--media-type` is ignored for managed nodes.** The value you pass is
-overwritten by the detection step above. Omitting `--content` is an argparse
-error: `create_node --content is required for managed nodes`.
+### `ik create_node`
 
-Otherwise (no `--title`, `--content` is inline text) the title is `null`.
+Appends a `create_node` event.
+
+| Flag | Required | Meaning |
+| --- | --- | --- |
+| `--content` | for `managed` | Inline text, or the path of a supported file. |
+| `--title` | no | Title stored in the event. |
+| `--resource-type` | no | `managed` (default), `uri` or `local_file`. |
+| `--uri` | for `uri` | External URL, never fetched. |
+| `--path` | for `local_file` | Local file, never copied. |
+| `--media-type` | no | One of the archival media types; a hint for `uri` nodes. |
+
+- **managed**: if `--content` names an existing file, the file is read — text
+  for `.txt`/`.md`, bytes for `.png`, `.jpg`, `.tif`/`.tiff` — with the media
+  type detected from its name; any other file fails with
+  `Unsupported archival media type for <path>` and nothing is written.
+  Otherwise `--content` is stored as `text/plain`. `--media-type` is ignored
+  for managed nodes. Missing `--content` exits 2.
+- **uri**: records `--uri` and the optional `--media-type`. Missing `--uri`
+  exits 2.
+- **local_file**: records the absolute path, size, SHA-256 and time of
+  `--path`; media type detected as above; title defaults to the file stem.
+  Missing `--path` exits 2; a missing file fails with
+  `Local file does not exist or is not a regular file: <path>`.
+- If `--title` is omitted and `--content` names an existing file, the title is
+  the file's stem.
 
 ```bash
 ik create_node --content "Gödel's incompleteness theorem"
 ik create_node --content ./notes/limits.md --title "Limits"
-```
-
-### `--resource-type uri`
-
-Records a reference to an external URL. No network access, no blob is written.
-`--media-type` **is** honoured here and stored as a hint; it may be omitted.
-`--content` and `--path` are ignored. Missing `--uri` is a usage
-error (exit 2): `--uri is required when --resource-type uri`.
-
-```bash
 ik create_node --resource-type uri --uri https://arxiv.org/abs/1234.5678 \
   --title "The paper" --media-type "application/pdf; profile=pdfa"
-```
-
-### `--resource-type local_file`
-
-Records a pointer to a file on this machine plus enough data to detect drift
-later. The path is expanded (`~`) and resolved to an absolute path; the file is
-read once to compute `file_size` and `file_hash` (SHA-256), and
-`last_verified` is stamped with the current UTC time. The bytes are **not**
-copied into the blob store.
-
-The media type is detected from the filename with the same restricted mapping
-as managed files, so unsupported extensions fail here too. `--title` defaults
-to the file stem. A missing or non-regular file raises
-`ValueError: Local file does not exist or is not a regular file: <path>`, and a
-missing `--path` is a usage error (exit 2): `--path is required when --resource-type local_file`.
-
-```bash
 ik create_node --resource-type local_file --path ~/scans/page.tiff
 ```
 
----
+### `ik create_edge`
 
-## `ik create_edge`
-
-Appends a `create_edge` event: a directed edge from source to target that
-itself carries content.
+Appends a directed edge that carries text.
 
 | Flag | Required | Meaning |
 | --- | --- | --- |
-| `--content` | yes | Text content attached to the edge. |
-| `--source-node` | yes | Source ID (UUID or alias). |
-| `--target-node` | yes | Target ID (UUID or alias). |
+| `--source-node` | yes | Source node (UUID or alias). |
+| `--target-node` | yes | Target node (UUID or alias). |
+| `--content` | yes | Edge text, stored verbatim as `text/plain` (a file path is not read). |
 
-Semantics and limits:
-
-- The content is **always** stored as `text/plain; charset=utf-8`. There is no
-  media-type flag, and unlike `create_node --content`, a value that happens to
-  be a file path is stored verbatim as text — the file is not read.
-- Both endpoints are resolved as aliases or UUIDs; an unknown alias raises
-  `UnknownItemError: Unknown ID or alias '<ref>'`.
-- Both endpoints **are** checked at write time: each must be an existing
-  base-network **node**, otherwise the command raises
-  `UnknownItemError: SOURCE NODE <uuid> NOT FOUND IN ARCHIVE` or
-  `UnknownItemError: TARGET NODE <uuid> NOT FOUND IN ARCHIVE`. Edges and tags
-  can never be endpoints.
-- Endpoints are validated *before* the content blob is written, so a failed
-  `create_edge` writes nothing.
-- Edges are directed. Endpoints are immutable: `supersede_edge` may replace an
-  edge's content but the index rejects any attempt to change `source_node` or
-  `target_node`.
-- Prints `Edge created: <uuid>` on success. Use `ik read` to recover the new `e{n}` alias.
+Both endpoints must be existing base nodes, checked before anything is
+written (`Unknown ID or alias '<ref>'`, `SOURCE NODE <uuid> NOT FOUND IN ARCHIVE`,
+`TARGET NODE <uuid> NOT FOUND IN ARCHIVE`). Use `ik read` to see the new
+`e{n}` alias.
 
 ```bash
-ik create_edge --content "generalises" --source-node e1 --target-node e2
+ik create_edge --source-node e2 --target-node e1 --content "states"
 ```
 
----
+### `ik supersede_node`
 
-## `ik supersede_node`
-
-Appends a `supersede_node` event that replaces a node's content. History is
-kept: the original event stays in the log.
+Appends replacement content for a node; history is kept.
 
 | Flag | Required | Meaning |
 | --- | --- | --- |
-| `--node-id` | yes | Node to supersede (UUID or `e{n}` alias). |
-| `--content` | yes | Replacement content, stored as literal text. |
-| `--title` | no | New title. When omitted, the node's latest title is kept. |
+| `--node-id` | yes | Node (UUID or alias). |
+| `--content` | yes | Replacement content, stored as `text/markdown`. |
+| `--title` | no | New title; the current one is kept when omitted. |
 
-Semantics:
-
-- The replacement is always a **managed** blob with media type
-  `text/markdown; charset=utf-8`, whatever the node's original resource type.
-- The node keeps its UUID and its `e{n}` alias.
-- Errors: `ValueError: Node '<id>' does not exist in this archive` and
-  `ValueError: ID '<id>' does not reference a base-network node`.
-- Only the node's author (the key that created it) may supersede it; any other
-  key fails with `AuthorshipError: Only the author of Node '<id>' may supersede it`
-  before anything is written. To disagree with someone else's node, create your
-  own node and an edge to theirs. A log containing a supersede signed by
-  another key fails verification with
-  `IntegrityError: Supersede by a non-author of item <uuid>`.
-- Prints `Node superseded: <uuid>`.
+Only the node's creator may supersede it
+(`Only the author of Node '<ref>' may supersede it`). Other errors:
+`Node '<ref>' does not exist in this archive`,
+`ID '<ref>' does not reference a base-network node`.
 
 ```bash
 ik supersede_node --node-id e1 --content "Gödel's *first* incompleteness theorem"
 ```
 
----
-
-## `ik supersede_edge`
-
-Appends a `supersede_edge` event that replaces an edge's content.
+### `ik supersede_edge`
 
 | Flag | Required | Meaning |
 | --- | --- | --- |
-| `--edge-id` | yes | Edge to supersede (UUID or `e{n}` alias). |
-| `--content` | yes | Replacement text. |
+| `--edge-id` | yes | Edge (UUID or alias). |
+| `--content` | yes | Replacement text (`text/plain`). |
 
-Semantics:
-
-- The replacement is always stored as `text/plain; charset=utf-8`.
-- `source_node`, `target_node` and `title` are copied from the current edge;
-  endpoints can never change.
-- Errors: `ValueError: Edge '<id>' does not exist in this archive` and
-  `ValueError: ID '<id>' does not reference a base-network edge`.
-- Only the edge's author may supersede it, as for `supersede_node`
-  (`AuthorshipError: Only the author of Edge '<id>' may supersede it`).
-- Prints `Edge superseded: <uuid>`.
+Endpoints and title are kept. Same authorship rule and errors as
+`supersede_node`, for edges.
 
 ```bash
 ik supersede_edge --edge-id e3 --content "strictly generalises"
 ```
 
----
+### `ik create_node_tag` and `ik create_edge_tag`
 
-## `ik create_edge_tag`
-
-Appends a `create_edge_tag` event to the **meta** event log, defining a tag
-intended for edges. It creates only the tag definition — it does not attach the
-tag to anything.
+Define a tag for nodes, or for edges, in the meta log.
 
 | Flag | Required | Meaning |
 | --- | --- | --- |
-| `--name` | yes | Tag name. |
-| `--description` | yes | Tag description. Mandatory, not optional. |
+| `--name` | yes | Tag name (not unique). |
+| `--description` | yes | Tag description. |
 
-Notes:
-
-- Tag vocabulary is entirely user-defined; no name is reserved and names are
-  not checked for uniqueness. Creating the same name twice yields two distinct
-  tag nodes.
-- The tag is written with the current author's public key. That author is the
-  only one who may later use it — see `set_tag`.
-- The new tag receives the next `m{n}` alias.
-- Prints `Meta node created: <uuid>` on success.
+The tag takes the next `m{n}` alias. `create_edge_tag` prints
+`Meta node created: <uuid>`; `create_node_tag` prints nothing.
 
 ```bash
-ik create_edge_tag --name "conjecture" --description "Unproven claimed relation"
+ik create_node_tag --name theorem --description "A proven statement"
+ik create_edge_tag --name proof --description "Proof relation"
 ```
 
----
+### `ik set_tag`
 
-## `ik create_node_tag`
-
-Same flags and notes as `create_edge_tag`, except that it appends a
-`create_node_tag` event, defining a tag intended for **nodes**, and it **prints
-nothing** on success (use `ik read` to find the new `m{n}` alias). Only node
-tags can be attached to nodes — see `set_tag`.
-
-```bash
-ik create_node_tag --name "theorem" --description "A proven statement"
-```
-
----
-
-## `ik set_tag`
-
-Attaches an existing tag to an existing base-network node or edge by appending
-a meta edge from the tag to a *representation* of the target.
+Assigns a tag to a base node or edge.
 
 | Flag | Required | Meaning |
 | --- | --- | --- |
-| `--tag` | yes | ID of the tag (UUID or `m{n}` alias). Becomes the meta edge's source. |
-| `--id` | yes | ID of the base-network node or edge to tag (UUID or `e{n}` alias). |
+| `--tag` | yes | Tag (UUID or `m{n}` alias). |
+| `--id` | yes | Node or edge to tag (UUID or `e{n}` alias). |
 
-Sequence of operations:
-
-1. Resolve `--tag` and assert it is a meta node created by `create_edge_tag` or
-   `create_node_tag` — otherwise `ValueError: <uuid> is not a tag node`.
-2. Assert the current author's public key equals the tag's author — otherwise
-   `ValueError: Only the tag's author may use this operation`.
-3. Resolve `--id` and require it to exist in the index
-   (`ValueError: UUID is not part of any network (neither base nor meta)`) and
-   to belong to the base network
-   (`ValueError: UUID should not be an item from the meta network`).
-4. If the target has no representation yet, append a
-   `create_edge_representation` or `create_node_representation` meta event
-   (chosen by whether the target is an edge), then reload and re-index the
-   archive. This is transparent but means a first-time `set_tag` writes **two**
-   meta events and consumes two `m{n}` aliases.
-5. Append a `set_edge_tag` / `set_node_tag` meta edge from the tag node to the
-   representation node.
-
-Notes:
-
-- The tag kind must match the target kind: an edge tag can only be applied to
-  an edge, and a node tag only to a node. Otherwise step 5 raises
-  `ValueError: An edge tag should point to an edge representation` or
-  `ValueError: A node tag should point to a node representation`.
-- Because that check runs in step 5, a rejected first-time `set_tag` still
-  leaves the representation event from step 4 in the meta log (consuming one
-  `m{n}` alias). No meta edge is written. This is **intended**: the
-  representation is harmless and is reused by any later `set_tag` on the same
-  target. When it happens, a `WARNING` naming the representation and target
-  UUIDs is logged before the `ValueError` is raised (silence it with
-  `--logging-level ERROR`). No warning is logged if the target already had a
-  representation, since nothing is written in that case.
-- Re-running `set_tag` with the same pair appends another meta edge; the
-  projected tag set is a set, so the result is idempotent in effect but not in
-  the log.
-- Prints nothing on success.
+The first assignment to an item writes two meta events (a representation,
+then the assignment) and so consumes two `m{n}` aliases. Errors are those of
+[`set_tag`](#tags) in the SDK. Prints nothing.
 
 ```bash
-ik create_node --content "Gödel's incompleteness theorem"   # e1
-ik create_node_tag --name "theorem" --description "A proven statement"   # m1
-ik set_tag --tag m1 --id e1   # m2 = representation of e1, m3 = meta edge
+ik set_tag --tag m1 --id e1
 ```
 
----
+### `ik read`
 
-## `ik read`
+Prints two tables on stdout: **Events Log** (base) and **Meta Events Log**,
+each row ending with the item's alias.
 
-Prints the archive as two `rich` tables on stdout: **Events Log** (base
-network) and **Meta Events Log**. Every row ends with a *Human-Friendly ID*
-column (`e{n}` / `m{n}`).
+| Flag | Meaning |
+| --- | --- |
+| `--mini` | Only timestamp, event type, author (and tag name in the meta table). |
+
+Without `--mini`, the base table adds node/edge IDs, source and target,
+resource type and title; the meta table adds IDs, tag description,
+source/target and underlying ID. Missing values show as `-`.
+
+### `ik export`
+
+Writes the base network as directed GraphML.
 
 | Flag | Required | Meaning |
 | --- | --- | --- |
-| `--mini` | no | Compact view: only Timestamp, Event Type, Author (+ Tag Name in the meta table). |
+| `--output-path` | yes | Destination file (overwritten). |
+| `--tags` | no | Comma-separated tags (UUIDs or aliases); keeps items carrying any of them. |
 
-Without `--mini` the base table adds Node ID, Edge ID, Source Node, Target
-Node, Resource Type and Title; the meta table adds Meta Node ID, Meta Edge ID,
-Tag Description, Meta Source/Target Node and Underlying ID. Missing values are
-shown as `-`.
-
-```bash
-ik read --mini
-```
-
----
-
-## `ik export`
-
-Writes the base network as a pretty-printed, directed GraphML file.
-
-| Flag | Required | Default | Meaning |
-| --- | --- | --- | --- |
-| `--output-path` | yes | — | Destination `.graphml` file (overwritten). |
-| `--tags` | no | none | Comma-separated tag IDs (UUIDs or `m{n}` aliases). |
-
-Semantics and limits:
-
-- Only `create_node` and `create_edge` events become `<node>` / `<edge>`
-  elements. **Supersede events are ignored**, so the export shows original
-  content.
-- Each element carries `author`, `timestamp`, `blob_hash`, and a `label` —
-  the label is only filled for `text/plain` content.
-- `--tags` keeps an item if it carries **any** of the listed tags (OR). Nodes
-  and edges are filtered independently, so an exported edge may point at a node
-  that was filtered out.
-- An unknown alias in `--tags` raises `UnknownItemError`.
-- Prints nothing on success.
+Each element carries `author`, `timestamp`, `blob_hash` and, for
+`text/plain` content, a `label`. See [Known limitations](#known-limitations).
 
 ```bash
-ik export --output-path graph.graphml --tags m1,m4
+ik export --output-path theorems.graphml --tags m1,m4
 ```
 
----
+### `ik ingest`
 
-## `ik ingest`
+Bulk-creates nodes from a folder, then edges from a file.
 
-Bulk-creates managed nodes from a folder, then edges from a definition file.
-Both flags are optional; with neither, nothing happens.
+| Flag | Meaning |
+| --- | --- |
+| `--input-folder` | Every entry (sorted, not recursive) becomes a node, read like `create_node --content`, titled by its stem. |
+| `--edges-def-file` | One edge per line: `source,target,content` (split on the first two commas). |
 
-| Flag | Required | Meaning |
+```bash
+printf 'e9,e1,cites\n' > edges.csv
+ik ingest --input-folder ./more --edges-def-file edges.csv
+```
+
+### `ik transcribe`
+
+Appends a signed `transcription` attesting the verified log.
+
+| Flag | Default | Meaning |
 | --- | --- | --- |
-| `--input-folder` | no | Every entry of this folder (sorted, **not** recursive) becomes a node. |
-| `--edges-def-file` | no | One edge per line: `source,target,content`. |
+| `--network` | `base` | `base` or `meta`; the event goes into that same log. |
+| `--note` | none | Free text stored in the event. |
 
-Semantics and limits:
-
-- Each entry goes through the same detection as `create_node --content`; the
-  node title is the file stem.
-- Hidden and unsupported files (e.g. `.DS_Store`) raise
-  `Unsupported archival media type` and abort the run; nodes already created
-  stay in the archive.
-- A **subdirectory** is not a file, so its path string is stored as a
-  `text/plain` node.
-- Edge lines split on the first two commas; the content may contain further
-  commas. Source and target accept UUIDs or `e{n}` aliases. The line's trailing
-  newline is **kept** in the edge content. A line with fewer than two commas
-  crashes.
-- Prints nothing on success.
-
-```bash
-printf 'e1,e2,generalises\n' > edges.csv
-ik ingest --input-folder ./notes --edges-def-file edges.csv
-```
-
----
-
-## `ik manifest`
-
-Writes (overwrites) `MANIFEST.json` at the archive root: format name and
-version, the current author's public key, the blob-store and event-log layout,
-and JSON schemas of the event models. No flags. Prints
-`MANIFEST written to: <path>`.
-
-Known wording bug: the manifest describes the canonical serialisation as
-"compact JSON"; the implementation actually uses `json.dumps(..., sort_keys=True)`
-with Python's default `", "` / `": "` separators.
-
-```bash
-ik manifest
-```
-
----
-
-## `ik transcribe`
-
-Appends a signed `transcription` event attesting the log as just verified:
-"I verified this log up to head H (its first N events) under algorithms A, now."
-Algorithms age; generations of transcriptions under newer algorithms are how
-a chain of custody outlives the ones it started with.
-
-| Flag | Required | Default | Meaning |
-| --- | --- | --- | --- |
-| `--network` | no | `base` | Log to attest, `base` or `meta`. The event is appended to **that same log**; it never attests the other one. |
-| `--note` | no | none | Free text stored in the event. |
-
-- The body records `verified_head`, `verified_count`, `verified_hash_alg`,
-  `verified_sig_alg`, `verified_at` (UTC) and `note`.
-- It allocates no `e{n}` / `m{n}` alias and changes no node, edge or tag.
-- Any author may transcribe any archive; a key is required.
-- An empty log cannot be transcribed:
-  `ArchiveRuleError: Nothing to transcribe: the <network> log is empty` (exit 1).
-- Prints `Transcription appended: <hash>`, the new head of that log.
-- SDK: `ik.transcribe(network="base", note=None)`; records are listed in
-  `ik.index.transcriptions["base"]` / `["meta"]`.
+Prints `Transcription appended: <hash>` (the new head). An empty log fails:
+`Nothing to transcribe: the <network> log is empty`.
 
 ```bash
 ik transcribe --note "re-verified before release"
-ik transcribe --network meta
 ```
 
----
+### `ik seal`
 
-## `ik seal`
+Fully verifies, then appends a signed seal of both logs and of the blobs they
+reference. Prints `Seal <n> created: <hash>`: the string to publish. Refused
+(exit 1) for an empty archive, an archive unchanged since the latest seal,
+and while unreferenced blobs exist (the error lists the files to delete).
 
-Re-verifies the whole archive, then appends a signed seal of the base tip,
-the meta tip and the blobs they reference to `seals/seals.ndjson` (see
-[Seals and the blob store](#seals-and-the-blob-store)). No flags.
+### `ik verify`
 
-- Prints `Seal <n> created: <hash>`. The hash is the string to publish.
-- Any key may seal; a key is required.
-- Refused (exit 1) when the archive is empty
-  (`Nothing to seal: the archive is empty`), unchanged since the latest seal
-  (`Nothing to seal: the archive is unchanged since seal <n>`), or holding
-  unreferenced blobs (`Cannot seal: <n> unreferenced blob(s) …`, with the
-  paths to delete).
-- SDK: `ik.seal()` returns an `indiek.Seal` (`hash`, `seq`, `prev_seal_hash`,
-  `base_head`, `base_count`, `meta_head`, `meta_count`, `blob_root`, `time`,
-  `key`); `ik.seals()` lists every verified seal, oldest first.
+Re-reads and fully verifies the archive: both logs, every referenced blob,
+every seal.
+
+| Flag | Meaning |
+| --- | --- |
+| `--expect HASH` | Fail unless the seal log contains this seal. |
+
+Prints `Archive verified: <n> base events, <m> meta events, <k> seals`, then
+`Latest seal: <hash>` if any, and with `--expect`
+`Expected seal found: seal <i> of <k>`. A failure exits 1 with its message,
+e.g. `Expected seal not found in seal log`.
 
 ```bash
-ik seal
+ik verify --expect "sha256:e1c0aa4631b1…"
 ```
 
----
+### `ik fsck`
 
-## `ik verify`
+Fully verifies (whatever `--verify` says) and prints a report:
 
-Re-reads and fully re-verifies the archive: both event logs, every
-referenced blob, and every seal.
-
-| Flag | Required | Meaning |
-| --- | --- | --- |
-| `--expect` | no | A seal hash. Fails unless the seal log contains it. |
-
-- Prints `Archive verified: <n> base events, <m> meta events, <k> seals`,
-  then `Latest seal: <hash>` when there is one, and with `--expect`
-  `Expected seal found: seal <i> of <k>`.
-- Any integrity failure exits 1 with its `IntegrityError` message; an absent
-  expected seal exits 1 with `Expected seal not found in seal log`.
-- SDK: `ik.verify(expect=None)` returns the expected seal, or the latest one
-  (`None` without seals).
-
-```bash
-ik verify --expect "$PUBLISHED_SEAL_HASH"   # e.g. sha256:e1c0aa46…
-```
-
----
-
-## `ik fsck`
-
-Fully verifies the archive (whatever `--verify` says) and prints a report.
-No flags. Exits 1 with the `IntegrityError` message if the archive is invalid.
-
-```
+```text
 Archive: /home/me/archives/demo
 Base log: 10 events, head sha256:…
 Meta log: 6 events, head sha256:…
@@ -820,116 +815,220 @@ Representations without a tag: 0
 Verification: full, OK
 ```
 
-Unreferenced blobs and representations without a tag are reported, not
-errors (see [Seals and the blob store](#seals-and-the-blob-store)). SDK:
-`ik.fsck()` returns an `indiek.FsckReport` with the same fields.
+### `ik manifest`
 
----
+Writes `MANIFEST.json` at the archive root — format version, algorithms
+used, the current author's public key (if any), layout, rules and JSON
+Schemas of every log line — and copies `SPEC.md` and `test_vectors.json`
+next to it. Prints `MANIFEST written to: <path>`. Re-run it after upgrading
+`indiek` to refresh the copies.
 
-## `ik config`
+### Example: a knowledge graph from scratch
 
-Shows, and optionally sets, `IK_ARCHIVE_PATH` in the dotenv file given by
-`--dot-env`. It needs neither a key nor an existing archive, so it can
-bootstrap a fresh setup.
-
-| Flag | Required | Meaning |
-| --- | --- | --- |
-| `--set-archive-path` | no | New archive path to write into the dotenv file. |
-
-- Prints `IK_ARCHIVE_PATH=<value>` (from the environment or the dotenv file) or
-  `IK_ARCHIVE_PATH is not set`; when setting, then prints `IK_ARCHIVE_PATH=<path>`.
-- The value is written with `dotenv.set_key`, which wraps it in single quotes.
-- Only `IK_ARCHIVE_PATH` can be set here; use `ik keygen --write` for the key.
+With a folder holding `notes/statement.txt`, `notes/proof-sketch.md`,
+`figures/diagram.png`, `scans/page.tiff` and `more/cites.txt`:
 
 ```bash
-ik --dot-env .env config --set-archive-path ~/archives/mykg
-```
-
----
-
-## `ik keygen`
-
-Generates a fresh Ed25519 author key. Needs neither a key nor an archive.
-
-| Flag | Required | Meaning |
-| --- | --- | --- |
-| `--write` | no | Store the seed in the `--dot-env` file (file mode set to `600`) instead of printing it. |
-| `--force` | no | With `--write`, replace an `IK_AUTHOR_PRIVATE_KEY` already in that file. The old key is lost. |
-
-- Without `--write`: prints `IK_AUTHOR_PRIVATE_KEY=<64 hex chars>` on stdout,
-  ready to append to a dotenv file, and `Public key: <hex>` on stderr.
-- With `--write`: prints nothing on stdout; stderr names the file and the
-  public key. If the file already defines the key and `--force` is absent, it
-  exits with status 1 and leaves the file untouched.
-- The seed is the only secret: never commit it. The public key is what appears
-  as `header.author` in events and in `MANIFEST.json`.
-
-```bash
-ik --dot-env .env keygen --write
-```
-
----
-
-## Example: build a knowledge graph from scratch
-
-One session exercising every command. Comments show the alias each step
-allocates in a fresh archive.
-
-Before running the bash script below, populate a kg-demo-0110/ folder with 
-a similar subtree of files and folders as the one below:
-
-```
-/foo/bar/kg-demo-0110/
-├── figures
-│   └── diagram.png
-├── more
-│   └── andtext.txt
-├── notes
-│   ├── proof-sketch.md
-│   └── statement.txt
-├── scans
-│   └── atiffimage.tiff
-```
-
-Contents of a demo bash script to create a knowledge graph archive from scratch below.
-
-```
-#!/bin/bash
-cd /foo/bar/kg-demo-0110   # a folder holding the sample files below
 ik keygen --write
-ik config --set-archive-path ~/tmp/archives/demo-0110
+ik config --set-archive-path ~/archives/demo
 
-# 2. Managed nodes: inline text, text/plain, text/markdown, image/png
 ik create_node --content "Gödel's incompleteness theorem"            # e1
-ik create_node --content ./notes/statement.txt                      # e2 (title "statement")
+ik create_node --content ./notes/statement.txt                      # e2, title "statement"
 ik create_node --content ./notes/proof-sketch.md --title "Proof"    # e3
 ik create_node --content ./figures/diagram.png                      # e4
-
-# 3. Reference nodes: uri and local_file
 ik create_node --resource-type uri --uri https://arxiv.org/abs/1234.5678 \
   --title "Survey" --media-type "application/pdf; profile=pdfa"     # e5
-ik create_node --resource-type local_file --path $(realpath .)/scans/atiffimage.tiff  # e6
+ik create_node --resource-type local_file --path "$(realpath scans/page.tiff)"  # e6
 
-# 4. Edges, then append-only revisions
 ik create_edge --source-node e2 --target-node e1 --content "states"  # e7
 ik create_edge --source-node e3 --target-node e2 --content "proves"  # e8
 ik supersede_node --node-id e1 --content "Gödel's *first* incompleteness theorem"
 ik supersede_edge --edge-id e8 --content "sketches a proof of"
 
-# 5. Tags
 ik create_node_tag --name theorem --description "A proven statement"  # m1
 ik create_edge_tag --name proof --description "Proof relation"        # m2
-ik set_tag --tag m1 --id e1   # m3 = representation of e1, m4 = meta edge
-ik set_tag --tag m2 --id e8   # m5 = representation of e8, m6 = meta edge
+ik set_tag --tag m1 --id e1   # m3 representation of e1, m4 assignment
+ik set_tag --tag m2 --id e8   # m5 representation of e8, m6 assignment
 
-# 6. Bulk import: one .txt in ./more becomes e9; the edge line becomes e10
 printf 'e9,e1,cites\n' > edges.csv
-ik ingest --input-folder ./more --edges-def-file edges.csv
+ik ingest --input-folder ./more --edges-def-file edges.csv           # e9, e10
 
-# 7. Inspect, export, document, seal
 ik read --mini
 ik export --output-path theorems.graphml --tags m1,m2
 ik manifest
-ik seal      # prints the seal hash to publish
+ik seal       # publish the printed hash
 ik verify
 ```
+
+## Integrity, seals and trust
+
+### Integrity verification
+
+Every command and every `Archive.open` verifies the archive before doing
+anything: the base log, then the meta log, then the seal log, then the replay
+into the index. Every event names its algorithms (`hash_alg: "sha256"`,
+`sig_alg: "ed25519"`); hashes are written `sha256:<hex>`, signatures
+`ed25519:<hex>`. A failure raises `IntegrityError` (CLI: exit 1) with one of:
+
+| Message | Meaning |
+| --- | --- |
+| `Invalid log line: …` | A line is not UTF-8, not one JSON object, repeats a key, or holds a non-integer number or an integer outside ±(2^53−1). |
+| `Invalid string: lone surrogate …` | A string is not valid Unicode. |
+| `Unsupported format version …` | An event or seal is not format `3.0`. |
+| `Unsupported algorithm …` | `hash_alg` / `sig_alg` missing or unknown. |
+| `Algorithm mismatch …` | A signature or `prev_hash` does not carry the declared algorithm prefix. |
+| `Chain broken!` | An event does not link to the previous one (edited, reordered, inserted or removed events). |
+| `Data tampered or bad author!` | A signature does not verify against its author's key. |
+| `File corrupted or missing!` | A referenced blob is absent or its bytes changed. |
+| `Meta anchor does not match base history` | A meta event points to a base history that no longer exists (the base was rewritten or truncated). |
+| `Meta anchor goes back in base history` | A meta event's anchor is older than the previous one's. |
+| `Transcription does not match chain` | A transcription attests a head the log does not have. |
+| `Seal chain broken!` | A seal is out of sequence, badly linked, badly signed or malformed. |
+| `Seal does not match logs!` | A seal names a log tip that is not in the logs (rewritten or truncated, or `meta/` missing). |
+| `Seal goes back in log history` | A seal covers fewer events than the previous one. |
+| `Blob set does not match seal!` | A seal's `blob_root` does not match the blobs its events reference. |
+| `Expected seal not found in seal log` | `--expect` / `--trust-seal` / `trusted_seal` names an absent seal. |
+| `Supersede event references unknown item <id>` · `Supersede event type does not match item <id>` · `Supersede by a non-author of item <id>` · `Supersede edge events cannot change endpoints` · `Tag assignment references an unknown representation` | The logs verify but their content is inconsistent. |
+
+**Meta anchors.** Every meta event records how many base events its author
+had verified (`base_seq`) and the hash of the last one (`base_head`). If the
+base is later rewritten or truncated, the base alone still verifies but every
+annotation anchored past the change fails. Base events never mention the
+meta log, so an archive shipped without `meta/` (and without `seals/`) is
+valid on its own.
+
+Some conditions only log a `WARNING`: unreferenced blobs, a seal of an empty
+archive, a seal repeating the previous one, and (with `full` verification)
+`SPEC.md` / `test_vectors.json` copies that differ from this package's.
+
+### Seals and the blob store
+
+A seal records the **base tip** and **meta tip** (event count and hash of the
+last event) and `blob_root`, an RFC 6962 Merkle root of every blob those
+events reference; it is signed and chained to the previous seal. The **seal
+hash** commits to everything in the archive at that moment. Publish it (a web
+page, an email, a printed book); anyone with a copy can check it with
+`ik verify --expect <hash>`. No seal can prove it is the *latest* one:
+freshness needs that outside reference.
+
+Every seal, not only the latest, is checked on every open: chain and
+signature, tips present in the logs, counts never decreasing, `blob_root`
+recomputed. Writing after a seal is normal and keeps it valid; seal again for
+a new checkpoint. `seals/` commits to both logs: ship it only together with
+`events/` and `meta/`.
+
+**Unreferenced blobs** are files under `blobs/sha256/` that no event uses —
+the leftover of an interrupted write, or a file added by hand. They are not
+part of the graph and no seal covers them. Opening warns
+(`<n> unreferenced blob(s) in <dir> … : <names>`), sealing is refused until
+they are deleted, and they are always safe to delete (`ik fsck` and
+`Archive.unreferenced_blobs()` list them). A *referenced* blob that is
+missing or altered always fails with `File corrupted or missing!`.
+
+### Verification levels and the trust model
+
+Most of the cost of opening an archive is checking the Ed25519 signature of
+every event and re-hashing every blob. Measured on 10,000 events:
+
+| Level (`--verify`, `verify=`) | What it does | 10k events |
+| --- | --- | --- |
+| `full` | Checks everything; ignores the cache, then refreshes it. | ≈ 11 s |
+| `incremental` (default) | Recomputes every hash link, anchor, transcription and seal, but skips the signature checks and blob re-hashing that a trusted source already vouches for. | ≈ 1 s once cached |
+| `none` | Parses only (debugging, recovering a damaged archive); the archive is read-only. | ≈ 0.3 s |
+
+`verify`, `fsck`, `seal`, `ingest`, `export` and `manifest` always run a
+`full` check first. At `incremental`, a damaged archive reports exactly the
+error `full` would.
+
+Checks may be skipped on exactly two grounds:
+
+1. **Your machine checked it before.** After a successful check, the reader
+   records "the signatures of events 1…N were valid and event N hashed to H"
+   per log, plus the size and modification time of each verified blob. Next
+   time it recomputes the chain anyway (cheap); if event N still hashes to H,
+   events 1…N are byte-for-byte those already checked. Anything else, and the
+   log is checked in full.
+2. **A seal hash you obtained separately** (`--trust-seal HASH`,
+   `trusted_seal=`), e.g. from the author's website. That seal must be in the
+   seal log and the recomputed chains must reach its tips; only the
+   signatures it covers are skipped.
+
+**Never because of a seal found in the archive.** Any key may seal. If
+Mallory alters Alice's event 500, re-links the events after it and seals the
+result with his own key, a full check still fails (`Data tampered or bad
+author!`): he cannot sign as Alice. Trusting seals found in the archive would
+skip exactly that check, so IndieK always checks them and never trusts them.
+With Alice's real seal hash, `--trust-seal` rejects Mallory's copy outright.
+
+**The cache** lives outside the archive, in your user cache directory
+(`~/Library/Caches/indiek/` on macOS, `$XDG_CACHE_HOME/indiek/` or
+`~/.cache/indiek/` on Linux, `%LOCALAPPDATA%\indiek\Cache\` on Windows;
+override with `IK_CACHE_DIR`), so nothing shipped with an archive can make
+you skip a check. One small `state.json` per archive holds hashes, counts and
+file sizes/times, never content; deleting it is always safe.
+
+Caveats: the separate route for a trusted seal must be authenticated;
+anyone who can write to your cache directory already controls your account;
+and since the cache cannot see bit rot that keeps a file's size and time,
+every blob is re-hashed whenever it is read, and `ik verify` / `ik fsck`
+re-hash them all.
+
+## Known limitations
+
+- **One writer per history.** Each log is a single chain. Two copies extended
+  independently cannot be merged (`Chain broken!`), and there is no lock
+  against two local processes writing at the same moment.
+- **Clock changes.** Events are filed by their UTC date; writing after the
+  system clock moved back across midnight breaks the chain.
+- **`local_file` paths** are absolute paths of the writer's machine.
+- **CLI `--media-type`** is ignored for managed nodes (detected from the
+  file name, or `text/plain`). PDF/A content can only be added from the SDK
+  (`media_type=MediaType.APPLICATION_PDF_A`).
+- **`export`** ignores supersedes (it shows original content), may keep an
+  edge whose endpoint was filtered out, labels only `text/plain` content, and
+  `--tags` fails with a `KeyError` on an archive whose base log holds a
+  `transcription` event.
+- **`ingest`** stores a subfolder's path as a text node, stops at the first
+  hidden or unsupported file (e.g. `.DS_Store`), keeps the trailing newline
+  in edge text, and crashes on an edge line with fewer than two commas.
+- **`manifest`** lists only the current author in `authors`.
+- **Reading content** goes through `archive.index.store.blobs`.
+- **Schema checks on read** are partial: see `SPEC.md` §20.
+- **Speed.** A `full` check of 10,000 events takes about 11 s.
+
+## The archive format
+
+The normative specification, `SPEC.md`, ships with the package
+(`indiek/spec/SPEC.md`) and is written into archives by `ik manifest`; an
+HTML version is on [indiek.org](https://indiek.org/docs/format/). In brief:
+
+- logs are NDJSON, UTF-8, one event per line, read in path order;
+- hashes and signatures are computed over canonical bytes: RFC 8785 (JCS)
+  restricted to ASCII keys and integers in ±(2^53−1);
+- an event is `{"header", "body", "signature"}`; the signature (Ed25519) covers
+  header and body; `prev_hash` is the hash of the whole previous event;
+- blobs live at `blobs/sha256/<2>/<2>/<hex>`;
+- meta events anchor to the base; seals commit to both logs and a Merkle
+  root of the referenced blobs;
+- `test_vectors.json` lets an independent implementation check itself.
+
+## Contributing
+
+Contributions open on **1 November 2026**; see
+[indiek.org/docs/contributing](https://indiek.org/docs/contributing/).
+
+```bash
+uv sync                              # dev environment (includes the cli extra)
+uv run pytest                        # test suite (uv run pytest -m slow for the 10k-event test)
+uv run ruff check src tests scripts
+uv run ruff format --check src tests scripts
+```
+
+Every change comes with tests and a `CHANGELOG.md` entry. After a format
+change, regenerate the test vectors with
+`uv run python scripts/make_test_vectors.py` and update `SPEC.md`.
+
+## License
+
+Copyright 2026 Adrian Ernesto Radillo. Licensed under the
+[Apache License, Version 2.0](LICENSE).

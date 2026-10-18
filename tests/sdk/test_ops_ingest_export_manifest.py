@@ -150,7 +150,8 @@ def test_write_manifest(root: Path) -> None:
         {"public_key": AUTHOR.public_key_hex, "algorithm": "Ed25519"}
     ]
     assert {"blob_store", "event_log", "seal_log", "schemas"} <= data.keys()
-    assert {"Seal", "LogTip", "MetaEventHeader"} <= data["schemas"].keys()
+    assert {"SealModel", "LogTip", "MetaEventHeader"} <= data["schemas"].keys()
+    assert (root / "SPEC.md").is_file() and (root / "test_vectors.json").is_file()
     assert "RFC 6962" in data["seal_log"]["blob_root"]
 
 

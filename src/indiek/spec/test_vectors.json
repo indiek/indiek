@@ -2,7 +2,8 @@
   "format_version": "3.0",
   "description": "Test vectors of the IndieK archive format: an independent implementation must reproduce every hex value from event_unsigned and seed_hex.",
   "rules": {
-    "canonical_bytes": "json.dumps(obj, sort_keys=True, separators=(\",\", \":\"), ensure_ascii=False) encoded as UTF-8",
+    "canonical_bytes": "RFC 8785 (JCS) restricted to ASCII object keys and integers in [-(2^53-1), 2^53-1]; inside that subset it equals json.dumps(obj, sort_keys=True, separators=(\",\", \":\"), ensure_ascii=False) encoded as UTF-8",
+    "integer_range": "every JSON number is an integer in [-(2^53-1), 2^53-1] (-9007199254740991 to 9007199254740991); writers refuse and readers reject any other number",
     "algorithms": "header.hash_alg and header.sig_alg name the event's algorithms (today 'sha256' and 'ed25519'); digests are written '<hash_alg>:<lowercase hex>' and signatures '<sig_alg>:<lowercase hex>'; the prev_hash and signature prefixes must equal the header's algorithms",
     "signature": "'ed25519:' + lowercase hex Ed25519 (RFC 8032) signature over canonical_bytes(event without its 'signature' field), no pre-hash",
     "event_hash": "'sha256:' + lowercase hex SHA-256 of canonical_bytes(whole event, 'signature' included); it is the next event's header.prev_hash",
@@ -10,7 +11,7 @@
     "blob_root": "RFC 6962 Merkle Tree Hash (SHA-256) over the ascending-sorted distinct blob digests referenced by the events a seal covers: leaf = SHA-256(0x00 || raw 32-byte digest), node = SHA-256(0x01 || left || right), no blobs = SHA-256(''); written 'sha256:<hex>'",
     "seal": "sig = 'ed25519:' + Ed25519 over canonical_bytes(seal without 'sig'); seal hash = 'sha256:' + SHA-256 of canonical_bytes(whole seal)",
     "transcription": "a transcription event attests its own log: verified_head must equal the event_hash of event number verified_count (1-based) of that log, and verified_count must be smaller than the transcription's own position",
-    "strict_parsing": "a log line with duplicate keys, floats, NaN or Infinity is invalid"
+    "strict_parsing": "a log line that is not UTF-8, not one JSON object, or holds a duplicate key, a non-integer number (fraction, exponent, NaN, Infinity), an integer outside the range above or a string with a lone surrogate is invalid"
   },
   "vectors": [
     {

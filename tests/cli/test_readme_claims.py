@@ -219,3 +219,31 @@ def test_readme_walkthrough_aliases(
         "set_edge_tag",
     ]
     assert Path(tmp_path / "t.graphml").exists()
+
+
+def test_verify_and_fsck_need_no_key(run_cli, archive_root, monkeypatch, capsys):
+    run_cli("create_node", "--content", "a")
+    run_cli("seal")
+    monkeypatch.delenv("IK_AUTHOR_PRIVATE_KEY")
+    empty = str(archive_root.parent / "absent.env")
+    for command in ("verify", "fsck"):
+        monkeypatch.setattr("sys.argv", ["ik", "--dot-env", empty, command])
+        ik_cli.main()
+    out = capsys.readouterr().out
+    assert "Archive verified: 1 base events" in out
+    assert "Verification: full, OK" in out
+
+
+@pytest.mark.xfail(
+    raises=KeyError,
+    strict=True,
+    reason="Known limitation (CLIPYPI:EXPORT-TAGS-TRANSCRIPTION-CRASH)",
+)
+def test_export_tags_with_a_base_transcription(run_cli, tmp_path):
+    run_cli("create_node", "--content", "a")
+    run_cli("create_node_tag", "--name", "t", "--description", "d")
+    run_cli("set_tag", "--tag", "m1", "--id", "e1")
+    run_cli("transcribe")
+    out = tmp_path / "g.graphml"
+    run_cli("export", "--output-path", str(out), "--tags", "m1")
+    assert out.read_text(encoding="utf-8").count("<node ") == 1

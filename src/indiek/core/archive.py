@@ -44,6 +44,7 @@ from indiek.core.errors import IntegrityError
 from indiek.core.models import EVENT_FORMAT_VERSION, TRANSCRIPTION_EVENT
 from indiek.core.seals import SealChain, verify_seals
 from indiek.core.signing import verify_event
+from indiek.core.spec import differing_spec_files
 from indiek.core.storage import BlobStore, EventLog, SealLog, strip_blob_prefix
 
 logger = logging.getLogger(__name__)
@@ -377,6 +378,14 @@ class ArchiveStore:
                     blobs=checker.seen,
                 ),
             )
+        if self.level is VerificationLevel.FULL:
+            for name in differing_spec_files(root):
+                logger.warning(
+                    "%s at the archive root differs from the copy shipped with this "
+                    "indiek package (it was probably written by another indiek "
+                    "version); it is informative only and does not affect validity",
+                    name,
+                )
         if self.unreferenced_blobs:
             logger.warning(
                 "%d unreferenced blob(s) in %s (no event uses them; delete them "

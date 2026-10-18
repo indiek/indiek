@@ -4,6 +4,29 @@ All notable changes to the `indiek` package are documented here.
 
 ## Unreleased
 
+## 1.0.0 - 2026-10-18
+
+First public release (owner decision 2026-10-18: straight from 0.16.0 to 1.0.0). Archive format `3.0` is the first public format version.
+
+### Added
+- (SPEC-IN-ARCHIVE) `src/indiek/spec/SPEC.md`: the normative, human-readable specification of format 3.0 (owner decision D19): layout, strict parsing, canonical bytes, algorithms, events, base and meta networks, transcriptions, blob store, meta anchors, seal log and `blob_root`, verification procedure, projection rules, writer rules and warnings, trust model, informative files, how to use the test vectors, every error message. It names no package version, so it changes only with the format.
+- (SPEC-IN-ARCHIVE) `ik manifest` / `Archive.write_manifest()` / `indiek.ops.manifest.write_manifest()` also write `SPEC.md` and `test_vectors.json` at the archive root (byte copies of the package files).
+- (SPEC-IN-ARCHIVE) `indiek.core.spec` (`SPEC_FILES`, `packaged_spec_file`, `differing_spec_files`). A `FULL` verification logs one WARNING per spec file present at the archive root that differs from the package copy ("probably written by another indiek version"); absent files are silent and validity is never affected (owner decision D20).
+- (SPEC-IN-ARCHIVE) `MANIFEST.json`: `spec`, `archive_layout` (root entries, owner decision D21: no `.ik-cache/`), `verification` (levels, trust, cache outside the archive), `log_lines`, `authors_note`; `indiek.ops.manifest.build_manifest()` and `generate_schemas()`.
+- (SPEC-IN-ARCHIVE) `indiek.core.canonical.MAX_SAFE_INTEGER` (2^53−1). Test-vector rules `integer_range` and an updated `canonical_bytes` / `strict_parsing` (vectors unchanged).
+- (SPEC-IN-ARCHIVE) Tests: `tests/sdk/test_spec_in_archive.py` (47: packaged spec documents every error message, schemas generated from the models, every `$ref` resolves, D20 warnings, D21 root entries, D18 range on read and write, UTF-8, lone surrogates) + 1 CLI test. Suite: 416 passed (+1 slow).
+- (DOCS-README) `README.md` rewritten for 1.0.0: what an archive is, install, SDK and CLI quickstarts, concepts, a complete Python SDK reference (`Author`, `Archive.open` and every facade method with runnable examples, the index, result types, enumerations, error hierarchy with every message), the CLI reference (corrected), integrity / seals / trust model, known limitations, format summary, contributing, license.
+- (DOCS-README) `tests/sdk/test_readme_snippets.py`: every ```` ```python ```` block of the README is executed in order, so the SDK examples cannot go stale; `tests/cli/test_readme_claims.py`: `verify` and `fsck` work without a key, and a strict `xfail` pinning the documented `export --tags` crash on archives with a base transcription (CLIPYPI:EXPORT-TAGS-TRANSCRIPTION-CRASH). Suite: 419 passed, 1 xfailed (+1 slow).
+
+### Changed
+- (SPEC-IN-ARCHIVE) `MANIFEST.json` `schemas` are generated from the pydantic models (`pydantic.json_schema.models_json_schema`, refs `#/schemas/<Model>`) instead of hand-copied dicts, so they cannot drift from the code; keys are model names (`EventModel`, `MetaEventModel`, `SealModel`, `EventHeader`, `MetaEventHeader`, `Node`, … `LogTip`). The stale "author MUST appear in MANIFEST authors" wording is gone: `authors` is informative.
+- (DOCS-README) README corrections: errors raised by writes are `ArchiveRuleError` / `UnknownItemError` / `AuthorshipError` (the old text said `ValueError`, their base class); `verify` and `fsck` need no key; the obsolete "known wording bug" of `ik manifest` is gone (fixed in 0.12.0).
+- (SPEC-IN-ARCHIVE) Canonical form stated as RFC 8785 (JCS) restricted to ASCII keys and integers in ±(2^53−1) (owner decision D18); `indiek.core.canonical` documents where and why we do not implement RFC 8785 in full.
+
+### Breaking
+- (SPEC-IN-ARCHIVE) D18 enforced: `canonical_bytes()` raises `ArchiveRuleError` for floats and integers outside ±(2^53−1) (so no writer can sign one), and `parse_line()` raises `IntegrityError("Invalid log line: integer … is outside ±(2^53−1)")`.
+- (SPEC-IN-ARCHIVE) Log files are read as bytes: a line that is not UTF-8 is `IntegrityError("Invalid log line: not UTF-8")` (was an uncaught `UnicodeDecodeError`), and a string holding a lone surrogate is `IntegrityError("Invalid string: lone surrogate …")` (was an uncaught `UnicodeEncodeError`). `parse_line()` accepts `str | bytes`.
+
 ## 0.16.0 - 2026-10-17
 
 ### Added
