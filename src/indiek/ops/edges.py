@@ -14,10 +14,12 @@ limitations under the License.
 
 ---
 
-Create directed, content-carrying edges and supersede edge content."""
+Create directed edges, with ``text/plain`` content or none, and supersede
+edge content."""
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from indiek.core.author import Author
@@ -34,17 +36,30 @@ def _require_node(index: ArchiveIndex, node_id: UUID, role: str) -> None:
         raise UnknownItemError(f"{role} NODE {node_id} NOT FOUND IN ARCHIVE")
 
 
+def _resource(index: ArchiveIndex, content: str | None) -> dict[str, Any]:
+    """Resource fields of an edge body; stores ``content`` as a blob if given."""
+    if content is None:
+        return {"resource_type": ResourceType.NONE}
+    digest = index.store.blobs.put(content)
+    return {
+        "resource_type": ResourceType.MANAGED,
+        "media_type": MediaType.TEXT_PLAIN,
+        "blob_hash": BLOB_HASH_PREFIX + digest,
+    }
+
+
 def create_edge(
     index: ArchiveIndex,
     author: Author,
     source: str | UUID,
     target: str | UUID,
-    content: str,
+    content: str | None = None,
 ) -> UUID:
     """Append a directed edge from ``source`` to ``target`` carrying ``content``.
 
     ``content`` is always stored verbatim as ``text/plain`` (a file path is
-    not read).  Endpoints must be existing base-network nodes; they are
+    not read); ``None`` makes a content-less edge (``resource_type: "none"``,
+    format 3.1, no blob).  Endpoints must be existing base-network nodes; they are
     validated before anything is written.
 
     Raises:
@@ -53,12 +68,8 @@ def create_edge(
     source_id, target_id = index.resolve(source), index.resolve(target)
     _require_node(index, source_id, "SOURCE")
     _require_node(index, target_id, "TARGET")
-    digest = index.store.blobs.put(content)
     body = Edge(
-        media_type=MediaType.TEXT_PLAIN,
-        blob_hash=BLOB_HASH_PREFIX + digest,
-        source_node=source_id,
-        target_node=target_id,
+        source_node=source_id, target_node=target_id, **_resource(index, content)
     )
     append_base(index, author, body)
     return body.edge_id
@@ -68,9 +79,10 @@ def supersede_edge(
     index: ArchiveIndex,
     author: Author,
     ref: str | UUID,
-    content: str,
+    content: str | None = None,
 ) -> UUID:
-    """Append replacement ``text/plain`` content for an existing edge.
+    """Append replacement ``text/plain`` content for an existing edge, or
+    make it content-less (``content=None``).
 
     Endpoints and title are copied from the current projection; they can
     never change.
@@ -82,15 +94,12 @@ def supersede_edge(
     item = require_base_item(index, ref, edge=True)
     if author.public_key_hex != item.author:
         raise AuthorshipError(f"Only the author of Edge {ref!r} may supersede it")
-    digest = index.store.blobs.put(content)
     body = SupersedeEdge(
         edge_id=item.id,
         source_node=UUID(str(item.body["source_node"])),
         target_node=UUID(str(item.body["target_node"])),
         title=item.body.get("title"),
-        resource_type=ResourceType.MANAGED,
-        media_type=MediaType.TEXT_PLAIN,
-        blob_hash=BLOB_HASH_PREFIX + digest,
+        **_resource(index, content),
     )
     append_base(index, author, body)
     return item.id

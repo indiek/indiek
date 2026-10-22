@@ -1,7 +1,7 @@
-# IndieK archive format — specification, format version 3.0
+# IndieK archive format — specification, format version 3.1
 
 This document is the normative specification of the IndieK archive format,
-format version `3.0`. It is shipped inside the `indiek` Python package and,
+format version `3.1` (which includes format `3.0`, §21). It is shipped inside the `indiek` Python package and,
 by `ik manifest`, at the root of every archive, next to `MANIFEST.json` and
 `test_vectors.json`. It contains everything needed to read, verify and write
 an archive without any IndieK software.
@@ -164,7 +164,7 @@ algorithms it starts with (algorithm agility).
 | hash | `sha256` | SHA-256 (FIPS 180-4) | `sha256:` + 64 hex |
 | signature | `ed25519` | PureEd25519 (RFC 8032), 32-byte public key | `ed25519:` + 128 hex |
 
-These are the only algorithms of format 3.0. A reader MUST reject an event
+These are the only algorithms of formats 3.0 and 3.1. A reader MUST reject an event
 or seal naming any other algorithm (`Unsupported algorithm …`).
 
 Public keys (`header.author`, seal `key`) are the 32-byte Ed25519 public key
@@ -187,7 +187,7 @@ Every line of an event log is an **event**:
 
 | Field | Type | Rule |
 | --- | --- | --- |
-| `version` | string | MUST be `"3.0"`, else `Unsupported format version …` |
+| `version` | string | MUST be `"3.0"` or `"3.1"`, else `Unsupported format version …`; `"3.1"` is required for a content-less edge (§7.2) |
 | `hash_alg` | string | MUST be a supported hash algorithm (§5) |
 | `sig_alg` | string | MUST be a supported signature algorithm (§5) |
 | `prev_hash` | digest or `null` | chain link (§6.5) |
@@ -258,7 +258,7 @@ Writers emit every field, with `null` when unused.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `resource_type` | `"managed"`, `"uri"`, `"local_file"` | where the content lives |
+| `resource_type` | `"managed"`, `"uri"`, `"local_file"`, `"none"` | where the content lives (`"none"`: there is none) |
 | `media_type` | media type or `null` | one of the archival media types (§7.3) |
 | `blob_hash` | `sha256:<64 hex>` or `null` | content in the blob store |
 | `uri` | string or `null` | external reference, never fetched |
@@ -279,6 +279,11 @@ Rules per resource type:
   `media_type` REQUIRED; `blob_hash` and `uri` MUST be `null`. The file is
   not part of the archive; its fingerprint lets a reader detect that it
   changed. `file_hash` is not checked against the blob store.
+- `none` (format 3.1): the item has no content. Only `edge` and
+  `supersede_edge` bodies MAY use it, only in events whose `version` is
+  `"3.1"`, and `media_type`, `blob_hash`, `uri` and the four local-file
+  fields MUST be `null`; otherwise `Invalid resource type 'none' …`. A
+  `supersede_edge` MAY switch an edge between content and no content.
 
 ### 7.3 Archival media types
 
@@ -424,8 +429,8 @@ outside reference: a seal hash published somewhere the reader trusts.
 An archive is **valid** when all of the following hold:
 
 1. Every line of the base log, the meta log and the seal log obeys §3.3.
-2. The base log, read in order (§3.2), obeys for each event: version (§6.2),
-   algorithms and prefixes (§5, §6.4, §6.5), chain link (§6.5), signature
+2. The base log, read in order (§3.2), obeys for each event: version (§6.2)
+   and resource type `none` (§7.2), algorithms and prefixes (§5, §6.4, §6.5), chain link (§6.5), signature
    (§6.4), referenced blob (§10), transcription (§9).
 3. The meta log obeys the same rules plus the anchor rules (§11).
 4. The seal log obeys §12.3.
@@ -478,6 +483,10 @@ other software that breaks them stays valid.
 - Only a tag's author assigns it, and a node tag goes on a node, an edge tag
   on an edge.
 - At most one representation is created per base item.
+- An event is stamped `"3.1"` only if it needs it (a content-less edge,
+  §7.2); every other event, every meta event and every seal is stamped
+  `"3.0"`, so an archive without content-less edges stays readable by
+  3.0-only readers.
 - A meta event is anchored to the base tip the writer has just verified.
 - A blob is written before the event that references it. A crash in between
   leaves an unreferenced blob, never a dangling reference.
@@ -548,9 +557,10 @@ version, so it changes only when the format or its wording does.
   deterministic, so the result MUST be `signature`; adding it to
   `event_unsigned` MUST give `event`; the hash of `event` MUST be
   `event_hash`. The vectors form a base log (genesis, a chained edge, a
-  transcription) and a meta log anchored to it, with non-ASCII strings.
+  transcription, a content-less 3.1 edge) and a meta log anchored to it,
+  with non-ASCII strings.
 - `merkle_vectors`: `blob_root` of 0, 1, 2, 3 and 5 leaves.
-- `seal_vectors`: a seal of those logs, checked like an event
+- `seal_vectors`: a seal of those logs (the first three base events and the meta event), checked like an event
   (`seal_unsigned`, `signing_bytes_hex`, `sig`, `seal`, `seal_hash`).
 
 The seeds are public test values; never use them as real keys.
@@ -569,6 +579,7 @@ cross-implementation reports. `…` stands for details.
 | `Invalid log line: integer … is outside ±(2^53−1)` | §3.3 |
 | `Invalid string: lone surrogate (not a Unicode scalar value)` | §3.3 |
 | `Unsupported format version …` | §6.2, §12.1 |
+| `Invalid resource type 'none': …` | §7.2 |
 | `Unsupported algorithm …` | §5 |
 | `Algorithm mismatch: <field> uses '<alg>' prefix, header says '<alg>'` (seals: `seal says`) | §6.4, §6.5, §12.1 |
 | `Chain broken!` | §6.5 |
@@ -599,7 +610,9 @@ them, and an independent reader SHOULD reject them.
 
 ## 21. Versioning
 
-This document specifies format `3.0`, the first public version of the
-format. Every event and seal carries its format version; readers MUST reject
-versions they do not implement. Future versions will keep every archive
-written in a published version readable.
+This document specifies format `3.1`. Format `3.0` was the first public
+version; `3.1` adds content-less edges (`resource_type: "none"`, §7.2) and
+changes nothing else, so every 3.0 event is a valid 3.1 event and seals stay
+`"3.0"`. Every event and seal carries its format version; readers MUST
+reject versions they do not implement. Future versions will keep every
+archive written in a published version readable.

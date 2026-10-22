@@ -98,12 +98,15 @@ def sample_files(tmp_path: Path) -> dict[str, Path]:
     plain.write_text("plain text body", encoding="utf-8")
     png = directory / "scan.png"
     png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+    pdf = directory / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n" + b"\x00" * 16)
     unsupported = directory / "data.csv"
     unsupported.write_text("a,b\n1,2\n", encoding="utf-8")
     return {
         "markdown": markdown,
         "plain": plain,
         "png": png,
+        "pdf": pdf,
         "unsupported": unsupported,
     }
 

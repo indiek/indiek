@@ -41,7 +41,7 @@ from pydantic.json_schema import models_json_schema
 
 from indiek.core.canonical import MAX_SAFE_INTEGER, algorithm_of
 from indiek.core.models import (
-    EVENT_FORMAT_VERSION,
+    FORMAT_VERSION,
     EventModel,
     MetaEventModel,
     SealModel,
@@ -311,7 +311,7 @@ def build_manifest(
     """The ``MANIFEST.json`` document (no event data)."""
     return {
         "format": "IndieK Public Archive",
-        "format_version": EVENT_FORMAT_VERSION,
+        "format_version": FORMAT_VERSION,
         "description": (
             "This MANIFEST.json documents the layout and schemas of an IndieK "
             "archive.  It is intended to allow any consumer to parse the archive "

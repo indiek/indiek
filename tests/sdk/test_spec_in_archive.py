@@ -78,6 +78,7 @@ ERROR_MESSAGES = [
     "not UTF-8",
     "lone surrogate",
     "Unsupported format version",
+    "Invalid resource type 'none'",
     "Unsupported algorithm",
     "Algorithm mismatch",
     "Chain broken!",
@@ -132,7 +133,7 @@ def test_the_package_ships_the_spec_and_the_vectors() -> None:
     assert spec.startswith("# IndieK archive format")
     assert "3.0" in spec and "RFC 8785" in spec
     vectors = json.loads(_packaged("test_vectors.json"))
-    assert vectors["format_version"] == "3.0"
+    assert vectors["format_version"] == "3.1"
     assert "2^53" in vectors["rules"]["integer_range"]
 
 

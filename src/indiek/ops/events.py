@@ -24,6 +24,7 @@ from indiek.core.author import Author
 from indiek.core.errors import UnknownItemError
 from indiek.core.index import ArchiveIndex, IndexedItem
 from indiek.core.models import (
+    CONTENTLESS_FORMAT_VERSION,
     EVENT_FORMAT_VERSION,
     Edge,
     EventHeader,
@@ -33,6 +34,7 @@ from indiek.core.models import (
     MetaEventModel,
     MetaRepresentation,
     Node,
+    ResourceType,
     SupersedeEdge,
     SupersedeNode,
     Tag,
@@ -47,9 +49,13 @@ MetaBody = Tag | MetaRepresentation | MetaEdge | Transcription
 def append_base(index: ArchiveIndex, author: Author, body: BaseBody) -> EventModel:
     """Sign ``body`` and append it to the base log, chained onto its head."""
     store = index.store
+    # Stamp 3.1 only where needed, so other events stay readable by 3.0 readers.
+    content_less = getattr(body, "resource_type", None) is ResourceType.NONE
     event = EventModel(
         header=EventHeader(
-            version=EVENT_FORMAT_VERSION,
+            version=CONTENTLESS_FORMAT_VERSION
+            if content_less
+            else EVENT_FORMAT_VERSION,
             prev_hash=store.base_head if store.base_count else None,
             author=author.public_key_hex,
         ),

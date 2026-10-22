@@ -242,8 +242,11 @@ class Archive:
         self.refresh()
         return node_id
 
-    def create_edge(self, source: str | UUID, target: str | UUID, content: str) -> UUID:
-        """Create a directed ``text/plain`` edge between two existing nodes."""
+    def create_edge(
+        self, source: str | UUID, target: str | UUID, content: str | None = None
+    ) -> UUID:
+        """Create a directed edge between two existing nodes, carrying
+        ``text/plain`` content or, with ``content=None``, none (format 3.1)."""
         edge_id = edges.create_edge(
             self._index, self._writer(), source, target, content
         )
@@ -265,8 +268,9 @@ class Archive:
         self.refresh()
         return node_id
 
-    def supersede_edge(self, edge: str | UUID, content: str) -> UUID:
-        """Replace an edge's content (append-only); endpoints never change."""
+    def supersede_edge(self, edge: str | UUID, content: str | None = None) -> UUID:
+        """Replace an edge's content (append-only), or drop it with
+        ``content=None``; endpoints never change."""
         edge_id = edges.supersede_edge(self._index, self._writer(), edge, content)
         self.refresh()
         return edge_id

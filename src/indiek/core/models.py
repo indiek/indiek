@@ -32,11 +32,18 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from indiek.core.canonical import DEFAULT_HASH_ALG, DEFAULT_SIG_ALG
 
-# Version 3.0 is the only format readers accept (no backward compatibility
-# before the first public release): whole-event signatures, compact canonical
-# JSON, algorithm-prefixed digests and signatures.  See
-# :mod:`indiek.core.canonical` and :mod:`indiek.core.signing`.
+# Format 3.0: whole-event signatures, compact canonical JSON,
+# algorithm-prefixed digests and signatures.  See :mod:`indiek.core.canonical`
+# and :mod:`indiek.core.signing`.  Format 3.1 adds content-less edges
+# (``resource_type: "none"``); writers stamp 3.1 only on the events that use
+# them, so archives without such edges stay readable by 3.0-only readers.
 EVENT_FORMAT_VERSION: str = "3.0"
+CONTENTLESS_FORMAT_VERSION: str = "3.1"
+FORMAT_VERSION: str = CONTENTLESS_FORMAT_VERSION  # latest format this package reads
+SUPPORTED_FORMAT_VERSIONS: frozenset[str] = frozenset(
+    {EVENT_FORMAT_VERSION, CONTENTLESS_FORMAT_VERSION}
+)
+CONTENTLESS_BODY_TYPES: frozenset[str] = frozenset({"edge", "supersede_edge"})
 
 TRANSCRIPTION_EVENT = "transcription"
 
@@ -64,6 +71,7 @@ class ResourceType(str, Enum):
     MANAGED = "managed"
     URI = "uri"
     LOCAL_FILE = "local_file"
+    NONE = "none"  # no content; edges only, format 3.1
 
 
 class EventType(str, Enum):
@@ -185,7 +193,23 @@ class EventBody(BaseModel, ABC):
     @model_validator(mode="after")
     def validate_resource_fields(self) -> "EventBody":
         """Require the fields appropriate to the selected resource type."""
-        if self.resource_type is ResourceType.MANAGED:
+        if self.resource_type is ResourceType.NONE:
+            if getattr(self, "body_type", None) not in CONTENTLESS_BODY_TYPES:
+                raise ValueError("none resources: only edges may have no content")
+            if any(
+                value is not None
+                for value in (
+                    self.media_type,
+                    self.blob_hash,
+                    self.uri,
+                    self.path,
+                    self.file_size,
+                    self.file_hash,
+                    self.last_verified,
+                )
+            ):
+                raise ValueError("none resources cannot include any resource field")
+        elif self.resource_type is ResourceType.MANAGED:
             if self.blob_hash is None or self.media_type is None:
                 raise ValueError("managed resources require blob_hash and media_type")
             if any(
@@ -334,6 +358,17 @@ class EventModel(BaseModel):
         discriminator="body_type"
     )
     signature: str | None = None
+
+    @model_validator(mode="after")
+    def content_less_needs_3_1(self) -> "EventModel":
+        """A ``resource_type: "none"`` body is valid only in a 3.1 event."""
+        if getattr(self.body, "resource_type", None) is ResourceType.NONE:
+            if self.header.version != CONTENTLESS_FORMAT_VERSION:
+                raise ValueError(
+                    "resource_type 'none' requires format version "
+                    f"{CONTENTLESS_FORMAT_VERSION}"
+                )
+        return self
 
 
 class MetaEventModel(BaseModel):

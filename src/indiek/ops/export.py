@@ -99,7 +99,8 @@ def build_graphml_tree(
             )
             ET.SubElement(edge, "data", key="edge_author").text = author
             ET.SubElement(edge, "data", key="edge_timestamp").text = timestamp
-            ET.SubElement(edge, "data", key="edge_hash").text = blob_hash
+            if blob_hash:  # content-less edges (format 3.1) have none
+                ET.SubElement(edge, "data", key="edge_hash").text = blob_hash
             if label_text:
                 ET.SubElement(edge, "data", key="edge_label").text = label_text
 

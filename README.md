@@ -9,7 +9,7 @@ This package is the reference implementation: a Python SDK (`import indiek`)
 and a command-line tool (`ik`). Broader context, guides and examples live on
 [indiek.org](https://indiek.org).
 
-- Package version: **1.0.0** · Archive format: **3.0** · License: Apache-2.0
+- Package version: **1.1.0** · Archive format: **3.1** · License: Apache-2.0
 - Python 3.14 or newer
 
 ## Contents
@@ -29,7 +29,7 @@ and a command-line tool (`ik`). Broader context, guides and examples live on
 ## What is an IndieK archive?
 
 A knowledge graph of **nodes** (a statement, a note, an image, a PDF, a link)
-and **directed edges** between them (which carry content too: "proves",
+and **directed edges** between them (which may carry content too: "proves",
 "cites", "contradicts"), plus **tags** on both, stored as a folder:
 
 ```text
@@ -133,11 +133,13 @@ archive. Anywhere an ID is expected, a UUID, a UUID string or an alias works.
 store; the default), a *uri* (an external link, recorded but never fetched),
 or a *local_file* (a pointer to a file on this machine plus its size and
 SHA-256, so a later change can be detected; the file is not copied).
+An edge may also have *no content* at all (`resource_type: "none"`).
 
 **Media types.** Managed and local-file content must use an archival-safe
 media type: `text/plain; charset=utf-8`, `text/markdown; charset=utf-8`,
 `image/tiff`, `image/png`, `image/jpeg`, `application/pdf; profile=pdfa`.
-Edges always carry `text/plain` content.
+A `.pdf` file is recorded as PDF/A; its conformance is not checked.
+Edge content, when there is some, is always `text/plain`.
 
 **Revisions.** `supersede_node` / `supersede_edge` append new content for an
 existing item, which keeps its UUID and alias. Only the item's creator may
@@ -287,6 +289,7 @@ paper = ik.create_node(
 )
 scan = ik.create_node(resource_type=ResourceType.LOCAL_FILE, path="scans/page.tiff")
 proves = ik.create_edge(note, statement, "sketches a proof of")
+see_also = ik.create_edge(diagram, note)  # an edge without content
 ```
 
 `create_node(content=None, *, media_type=None, title=None, resource_type=ResourceType.MANAGED, uri=None, path=None) -> UUID`
@@ -299,14 +302,16 @@ proves = ik.create_edge(note, statement, "sketches a proof of")
   Error: `uri is required for uri nodes`.
 - `local_file`: records the absolute resolved `path`, the file size, its
   SHA-256 and the time; the media type is detected from the file name
-  (`.txt`, `.md`, `.png`, `.jpg`/`.jpeg`, `.tif`/`.tiff`) and the title
+  (`.txt`, `.md`, `.png`, `.jpg`/`.jpeg`, `.tif`/`.tiff`, `.pdf`) and the title
   defaults to the file stem. Errors: `path is required for local_file nodes`,
   `Local file does not exist or is not a regular file: <path>`,
   `Unsupported archival media type for <path>`.
 
-`create_edge(source, target, content) -> UUID` — a directed edge between two
+`create_edge(source, target, content=None) -> UUID` — a directed edge between two
 existing base **nodes**, carrying `content` as `text/plain` (stored
-verbatim). Endpoints are checked before anything is written:
+verbatim). Without `content`, the edge has none: no blob is written and the
+event is stamped format `3.1` (see [Format versions](#format-versions)).
+Endpoints are checked before anything is written:
 `UnknownItemError` `Unknown ID or alias '<ref>'`,
 `SOURCE NODE <uuid> NOT FOUND IN ARCHIVE`, `TARGET NODE <uuid> NOT FOUND IN ARCHIVE`
 (edges and tags can never be endpoints). Self-loops are allowed.
@@ -317,12 +322,14 @@ verbatim). Endpoints are checked before anything is written:
 ik.supersede_node(theorem, "Gödel's *first* incompleteness theorem (1931)")
 ik.supersede_node(theorem, "Gödel's first incompleteness theorem", title="Gödel 1931")
 ik.supersede_edge("e3", "states, in modern terms")
+ik.supersede_edge(see_also, "illustrates")  # content-less edges can gain content
 ```
 
 `supersede_node(node, content, *, title=None, media_type=MediaType.TEXT_MARKDOWN) -> UUID`
 replaces a node's content with a managed blob; `title=None` keeps the current
-title. `supersede_edge(edge, content) -> UUID` replaces an edge's
-`text/plain` content; endpoints and title are kept. Both return the item's
+title. `supersede_edge(edge, content=None) -> UUID` replaces an edge's
+`text/plain` content, or removes it (`content=None`); endpoints and title
+are kept. Both return the item's
 UUID, which does not change. Errors: `UnknownItemError`
 `Node '<ref>' does not exist in this archive`,
 `ID '<ref>' does not reference a base-network node` (and the edge
@@ -371,7 +378,7 @@ ik.write_manifest()                                # MANIFEST.json, SPEC.md, tes
 
 - `ingest(*, input_folder=None, edges_file=None) -> IngestResult` — every
   entry of `input_folder` (sorted, not recursive) becomes a managed node
-  titled by its stem (text files as text, images as bytes); then every line
+  titled by its stem (text files as text, images and PDFs as bytes); then every line
   `source,target,content` of `edges_file` becomes an edge (split on the
   first two commas; endpoints may be UUIDs or aliases). Stops at the first
   error; earlier writes are kept. See [Known limitations](#known-limitations).
@@ -607,8 +614,8 @@ Appends a `create_node` event.
 | `--media-type` | no | One of the archival media types; a hint for `uri` nodes. |
 
 - **managed**: if `--content` names an existing file, the file is read — text
-  for `.txt`/`.md`, bytes for `.png`, `.jpg`, `.tif`/`.tiff` — with the media
-  type detected from its name; any other file fails with
+  for `.txt`/`.md`, bytes for `.png`, `.jpg`, `.tif`/`.tiff` and `.pdf` — with
+  the media type detected from its name; any other file fails with
   `Unsupported archival media type for <path>` and nothing is written.
   Otherwise `--content` is stored as `text/plain`. `--media-type` is ignored
   for managed nodes. Missing `--content` exits 2.
@@ -637,7 +644,7 @@ Appends a directed edge that carries text.
 | --- | --- | --- |
 | `--source-node` | yes | Source node (UUID or alias). |
 | `--target-node` | yes | Target node (UUID or alias). |
-| `--content` | yes | Edge text, stored verbatim as `text/plain` (a file path is not read). |
+| `--content` | no | Edge text, stored verbatim as `text/plain` (a file path is not read). Omit it for an edge without content. |
 
 Both endpoints must be existing base nodes, checked before anything is
 written (`Unknown ID or alias '<ref>'`, `SOURCE NODE <uuid> NOT FOUND IN ARCHIVE`,
@@ -646,6 +653,7 @@ written (`Unknown ID or alias '<ref>'`, `SOURCE NODE <uuid> NOT FOUND IN ARCHIVE
 
 ```bash
 ik create_edge --source-node e2 --target-node e1 --content "states"
+ik create_edge --source-node e2 --target-node e1   # no content
 ```
 
 ### `ik supersede_node`
@@ -672,7 +680,7 @@ ik supersede_node --node-id e1 --content "Gödel's *first* incompleteness theore
 | Flag | Required | Meaning |
 | --- | --- | --- |
 | `--edge-id` | yes | Edge (UUID or alias). |
-| `--content` | yes | Replacement text (`text/plain`). |
+| `--content` | no | Replacement text (`text/plain`); omit it to remove the edge's content. |
 
 Endpoints and title are kept. Same authorship rule and errors as
 `supersede_node`, for edges.
@@ -737,8 +745,8 @@ Writes the base network as directed GraphML.
 | `--output-path` | yes | Destination file (overwritten). |
 | `--tags` | no | Comma-separated tags (UUIDs or aliases); keeps items carrying any of them. |
 
-Each element carries `author`, `timestamp`, `blob_hash` and, for
-`text/plain` content, a `label`. See [Known limitations](#known-limitations).
+Each element carries `author`, `timestamp`, `blob_hash` (absent for an edge
+without content) and, for `text/plain` content, a `label`. See [Known limitations](#known-limitations).
 
 ```bash
 ik export --output-path theorems.graphml --tags m1,m4
@@ -874,7 +882,8 @@ into the index. Every event names its algorithms (`hash_alg: "sha256"`,
 | --- | --- |
 | `Invalid log line: …` | A line is not UTF-8, not one JSON object, repeats a key, or holds a non-integer number or an integer outside ±(2^53−1). |
 | `Invalid string: lone surrogate …` | A string is not valid Unicode. |
-| `Unsupported format version …` | An event or seal is not format `3.0`. |
+| `Unsupported format version …` | An event is not format `3.0` or `3.1`, or a seal is not `3.0`. |
+| `Invalid resource type 'none': …` | A content-less body is not an edge, is not in a `3.1` event, or has a resource field set. |
 | `Unsupported algorithm …` | `hash_alg` / `sig_alg` missing or unknown. |
 | `Algorithm mismatch …` | A signature or `prev_hash` does not carry the declared algorithm prefix. |
 | `Chain broken!` | An event does not link to the previous one (edited, reordered, inserted or removed events). |
@@ -982,8 +991,11 @@ re-hash them all.
   system clock moved back across midnight breaks the chain.
 - **`local_file` paths** are absolute paths of the writer's machine.
 - **CLI `--media-type`** is ignored for managed nodes (detected from the
-  file name, or `text/plain`). PDF/A content can only be added from the SDK
-  (`media_type=MediaType.APPLICATION_PDF_A`).
+  file name, or `text/plain`).
+- **PDF/A is not checked.** A `.pdf` file is recorded as
+  `application/pdf; profile=pdfa` without inspecting it: PDF/A shares the
+  `application/pdf` media type, so the type is the writer's claim. Convert
+  ordinary PDFs to PDF/A before adding them.
 - **`export`** ignores supersedes (it shows original content), may keep an
   edge whose endpoint was filtered out, labels only `text/plain` content, and
   `--tags` fails with a `KeyError` on an archive whose base log holds a
@@ -997,6 +1009,20 @@ re-hash them all.
 - **Speed.** A `full` check of 10,000 events takes about 11 s.
 
 ## The archive format
+
+### Format versions
+
+- **3.0** — the first public format (indiek 1.0.0).
+- **3.1** — adds edges without content (`resource_type: "none"`), and nothing
+  else.
+
+The SDK stamps `3.1` **only** on the events that create or supersede an edge
+without content; every other event, the meta log and seals stay `3.0`. An
+archive without content-less edges is therefore still readable by indiek
+1.0/1.1; one with them fails there with `Unsupported format version '3.1'`.
+indiek reads both versions.
+
+### In brief
 
 The normative specification, `SPEC.md`, ships with the package
 (`indiek/spec/SPEC.md`) and is written into archives by `ik manifest`; an

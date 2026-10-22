@@ -41,7 +41,12 @@ from indiek.core.canonical import (
     event_hash,
 )
 from indiek.core.errors import IntegrityError
-from indiek.core.models import EVENT_FORMAT_VERSION, TRANSCRIPTION_EVENT
+from indiek.core.models import (
+    CONTENTLESS_BODY_TYPES,
+    CONTENTLESS_FORMAT_VERSION,
+    SUPPORTED_FORMAT_VERSIONS,
+    TRANSCRIPTION_EVENT,
+)
 from indiek.core.seals import SealChain, verify_seals
 from indiek.core.signing import verify_event
 from indiek.core.spec import differing_spec_files
@@ -191,6 +196,7 @@ def verify_chain(
 
     Raises:
         IntegrityError: ``"Unsupported format version …"``,
+            ``"Invalid resource type 'none' …"``,
             ``"Unsupported algorithm …"``, ``"Algorithm mismatch …"``,
             ``"Chain broken!"``, ``"Data tampered or bad author!"``,
             ``"File corrupted or missing!"`` or
@@ -212,6 +218,40 @@ def verify_chain(
     return _verify_chain(log, checker, anchors, None)
 
 
+_RESOURCE_FIELDS = (
+    "media_type",
+    "blob_hash",
+    "uri",
+    "path",
+    "file_size",
+    "file_hash",
+    "last_verified",
+)
+
+
+def _check_version(event: dict[str, Any]) -> None:
+    """Accept formats 3.0 and 3.1; ``resource_type: "none"`` (content-less
+    edges) only on edge bodies of 3.1 events, with every resource field null."""
+    version = event.get("header", {}).get("version")
+    if version not in SUPPORTED_FORMAT_VERSIONS:
+        raise IntegrityError(f"Unsupported format version {version!r}")
+    body = event.get("body", {})
+    if body.get("resource_type") != "none":
+        return
+    if version != CONTENTLESS_FORMAT_VERSION:
+        raise IntegrityError(
+            f"Invalid resource type 'none': needs format {CONTENTLESS_FORMAT_VERSION}"
+        )
+    if body.get("body_type") not in CONTENTLESS_BODY_TYPES:
+        raise IntegrityError(
+            "Invalid resource type 'none': only edges may have no content"
+        )
+    if any(body.get(field) is not None for field in _RESOURCE_FIELDS):
+        raise IntegrityError(
+            "Invalid resource type 'none': resource fields must be null"
+        )
+
+
 def _verify_chain(
     log: EventLog,
     checker: BlobChecker,
@@ -225,9 +265,7 @@ def _verify_chain(
     floor = 0  # highest base_seq seen so far (meta logs only)
     skip_until = tip.count if tip is not None else 0
     for position, event in enumerate(log, start=1):
-        version = event.get("header", {}).get("version")
-        if version != EVENT_FORMAT_VERSION:
-            raise IntegrityError(f"Unsupported format version {version!r}")
+        _check_version(event)
         hash_alg, sig_alg = _check_algorithms(event)
         # Only a log's first event may (and must) have prev_hash null, so a
         # truncated prefix is detected.  prev_hash uses this event's hash_alg.

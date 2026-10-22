@@ -37,6 +37,8 @@ _DETECTABLE_MEDIA_TYPES: dict[str, MediaType] = {
     "image/jpeg": MediaType.IMAGE_JPEG,
     "image/png": MediaType.IMAGE_PNG,
     "image/tiff": MediaType.IMAGE_TIFF,
+    # PDF/A shares ``application/pdf`` and is not checked: the type is the writer's claim.
+    "application/pdf": MediaType.APPLICATION_PDF_A,
 }
 _TEXT_MEDIA_TYPES = {MediaType.TEXT_PLAIN, MediaType.TEXT_MARKDOWN}
 
