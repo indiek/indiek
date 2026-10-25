@@ -35,3 +35,8 @@ class AuthorshipError(IndieKError, ValueError):
 
 class ArchiveRuleError(IndieKError, ValueError):
     """The requested write would violate a rule of the archive format."""
+
+
+class ArchiveLockedError(IndieKError):
+    """Another process holds the archive's write lock (``<archive>/.ik.lock``)
+    for longer than the writer's ``lock_timeout``."""

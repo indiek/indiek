@@ -118,7 +118,8 @@ def test_the_cache_lives_outside_the_archive(root: Path, ik_cache_dir: Path) -> 
     _three_nodes(root)
     path = cache_path(ik_cache_dir, root)
     assert path.is_file() and ik_cache_dir in path.parents
-    assert not any(p.name.startswith(".ik") for p in root.iterdir())
+    # Only the write lock (SDK2:WRITE-LOCK) may sit there, never cache data.
+    assert {p.name for p in root.iterdir() if p.name.startswith(".ik")} <= {".ik.lock"}
     data = json.loads(path.read_text("utf-8"))
     assert set(data) == {"format", "archive", "logs", "blobs"}
     assert data["logs"]["base"]["count"] == 3

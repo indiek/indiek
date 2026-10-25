@@ -4,12 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "indiek"
-version = "1.1.0"
+version = "1.2.0"
 description = "IndieK archive SDK and ik CLI"
 requires-python = ">=3.14"
 dependencies = [
     "pynacl",
     "pydantic",
+    "filelock>=4.2.4",
 ]
 readme = "README.md"
 

@@ -157,3 +157,44 @@ def test_corrupted_blob_is_detected(
         lambda: run_cli("create_node", "--content", "next"),
         "File corrupted or missing!",
     )
+
+
+def test_a_locked_archive_is_a_clean_cli_error(
+    capsys: pytest.CaptureFixture[str],
+    archive_root: Path,
+    run_cli: Callable[..., None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SDK2:WRITE-LOCK: another process writing → ``ik: error:``, no traceback."""
+    import subprocess
+    import sys
+
+    import indiek.sdk
+
+    monkeypatch.setattr(indiek.sdk, "DEFAULT_LOCK_TIMEOUT", 0.2)
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from filelock import FileLock\n"
+            "with FileLock(sys.argv[1]):\n"
+            "    print('locked', flush=True); sys.stdin.read()",
+            str(archive_root / ".ik.lock"),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert (
+            holder.stdout is not None and holder.stdout.readline().strip() == "locked"
+        )
+        _assert_cli_error(
+            capsys,
+            lambda: run_cli("create_node", "--content", "blocked"),
+            "being written by another process",
+        )
+    finally:
+        assert holder.stdin is not None
+        holder.stdin.close()
+        holder.wait(timeout=30)

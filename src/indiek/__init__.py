@@ -29,6 +29,7 @@ from importlib.metadata import PackageNotFoundError, version
 from indiek.core.archive import VerificationLevel
 from indiek.core.author import Author
 from indiek.core.errors import (
+    ArchiveLockedError,
     ArchiveRuleError,
     AuthorshipError,
     IndieKError,
@@ -49,6 +50,7 @@ except PackageNotFoundError:  # running from a source tree without metadata
 __all__ = [
     "Archive",
     "ArchiveIndex",
+    "ArchiveLockedError",
     "ArchiveRuleError",
     "Author",
     "AuthorshipError",

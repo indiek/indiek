@@ -21,16 +21,24 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
 from typing import Any, Self
 from uuid import UUID
 
+from filelock import FileLock, Timeout
+
 from indiek.core.archive import ArchiveStore, VerificationLevel
 from indiek.core.cache import default_cache_dir
 from indiek.core.author import Author
-from indiek.core.errors import ArchiveRuleError, AuthorshipError, IntegrityError
+from indiek.core.errors import (
+    ArchiveLockedError,
+    ArchiveRuleError,
+    AuthorshipError,
+    IntegrityError,
+)
 from indiek.core.index import ArchiveIndex, ItemKind, Network
 from indiek.core.models import MediaType, ResourceType
 from indiek.core.seals import Seal
@@ -46,6 +54,11 @@ from indiek.ops import (
 from indiek.ops import seal as sealing
 from indiek.ops.ingest import IngestResult
 from indiek.ops.tags import TagKind
+
+LOCK_FILE_NAME = ".ik.lock"
+"""Advisory write lock at the archive root; not part of the archive (readers ignore it)."""
+DEFAULT_LOCK_TIMEOUT = 10.0
+"""Seconds a writer waits for another process's write lock (owner decision 2026-10-25)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +86,13 @@ class Archive:
     aliases (``e1``, ``m1``…) of new items are usable immediately.  Without an
     ``author`` the archive is read-only.
 
+    Writes are serialised across processes (SDK2:WRITE-LOCK): each one holds
+    the advisory lock ``<archive>/.ik.lock``, re-reads the archive inside it
+    (so it chains onto the true head even if another process — the Desktop
+    App, ``ik`` — wrote since this object was opened), appends, and releases.
+    A writer waits up to ``lock_timeout`` seconds, then raises
+    :class:`ArchiveLockedError`.  Reads never take the lock.
+
     Verification (owner decisions 2026-10-17): ``verify="incremental"`` (the
     default) recomputes every hash chain but skips the signature checks and
     blob re-hashing that this machine's cache (stored outside the archive) or
@@ -96,11 +116,15 @@ class Archive:
         author: Author | None,
         index: ArchiveIndex,
         level: VerificationLevel = VerificationLevel.INCREMENTAL,
+        lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
     ) -> None:
+        if lock_timeout < 0:
+            raise ValueError(f"lock_timeout must be >= 0 seconds, not {lock_timeout}")
         self._path = path
         self.author = author
         self._index = index
         self._level = level
+        self._lock_timeout = lock_timeout
 
     @classmethod
     def open(
@@ -111,6 +135,7 @@ class Archive:
         verify: VerificationLevel | str = VerificationLevel.INCREMENTAL,
         trusted_seal: str | None = None,
         cache_dir: str | Path | None = None,
+        lock_timeout: float | None = None,
     ) -> Self:
         """Open and verify the archive at ``path`` (which may not exist yet).
 
@@ -121,13 +146,18 @@ class Archive:
                 re-checked (their hash chain still is).
             cache_dir: the verification cache directory; default: the
                 user's cache dir (``IK_CACHE_DIR``, else per-OS convention).
+            lock_timeout: seconds a write waits for another process's write
+                lock before raising :class:`ArchiveLockedError` (default 10).
 
         Raises:
             IntegrityError: the archive on disk is corrupted or inconsistent,
                 or ``trusted_seal`` is not in its seal log.
-            ValueError: unknown ``verify`` level.
+            ValueError: unknown ``verify`` level, or negative ``lock_timeout``.
         """
         root = Path(path).expanduser()
+        timeout = DEFAULT_LOCK_TIMEOUT if lock_timeout is None else lock_timeout
+        if timeout < 0:
+            raise ValueError(f"lock_timeout must be >= 0 seconds, not {timeout}")
         level = VerificationLevel(verify)
         directory = (
             Path(cache_dir)
@@ -139,7 +169,7 @@ class Archive:
         store = ArchiveStore.open(
             root, level=level, trusted_seal=trusted_seal, cache_dir=directory
         )
-        return cls(root, author, ArchiveIndex(store), level)
+        return cls(root, author, ArchiveIndex(store), level, timeout)
 
     # -- state -------------------------------------------------------------
 
@@ -199,6 +229,40 @@ class Archive:
             raise AuthorshipError("An author is required to write to an archive")
         return self.author
 
+    @contextmanager
+    def _writing(self, *, full: bool = False) -> Iterator[Author]:
+        """Hold the archive's write lock around one write operation.
+
+        Inside the lock the archive is re-read (``full``: re-verified ``FULL``)
+        so the write sees, and chains onto, what other processes appended; it
+        is refreshed again afterwards, even when the operation failed midway.
+
+        Raises:
+            ArchiveLockedError: the lock stayed busy for ``lock_timeout`` s.
+        """
+        author = self._writer()
+        self._path.mkdir(parents=True, exist_ok=True)
+        lock_path = self._path / LOCK_FILE_NAME
+        lock = FileLock(lock_path, timeout=self._lock_timeout)
+        try:
+            lock.acquire()
+        except Timeout as exc:
+            raise ArchiveLockedError(
+                f"Archive is being written by another process (lock {lock_path} "
+                f"still held after {self._lock_timeout:g} s); retry later"
+            ) from exc
+        try:
+            if full:
+                self._verify_fully()
+            else:
+                self.refresh()
+            yield author
+        finally:
+            try:
+                self.refresh()
+            finally:
+                lock.release()
+
     # -- base network --------------------------------------------------------
 
     def create_node(
@@ -219,39 +283,40 @@ class Archive:
         * ``uri``: records ``uri`` (never fetched); ``media_type`` is a hint.
         * ``local_file``: records ``path`` plus size and SHA-256 fingerprint.
         """
-        author = self._writer()
+        self._writer()
         kind = ResourceType(resource_type)
-        if kind is ResourceType.URI:
-            if not uri:
-                raise ArchiveRuleError("uri is required for uri nodes")
-            node_id = nodes.create_uri_node(self._index, author, uri, title, media_type)
-        elif kind is ResourceType.LOCAL_FILE:
-            if path is None:
-                raise ArchiveRuleError("path is required for local_file nodes")
-            node_id = nodes.create_local_file_node(self._index, author, path, title)
-        else:
+        if kind is ResourceType.URI and not uri:
+            raise ArchiveRuleError("uri is required for uri nodes")
+        if kind is ResourceType.LOCAL_FILE and path is None:
+            raise ArchiveRuleError("path is required for local_file nodes")
+        if kind is ResourceType.MANAGED:
             if content is None:
                 raise ArchiveRuleError("content is required for managed nodes")
             if media_type is None:
                 if isinstance(content, bytes):
                     raise ArchiveRuleError("media_type is required for bytes content")
                 media_type = MediaType.TEXT_PLAIN
-            node_id = nodes.create_managed_node(
+        with self._writing() as author:
+            if kind is ResourceType.URI:
+                assert uri is not None
+                return nodes.create_uri_node(
+                    self._index, author, uri, title, media_type
+                )
+            if kind is ResourceType.LOCAL_FILE:
+                assert path is not None
+                return nodes.create_local_file_node(self._index, author, path, title)
+            assert content is not None and media_type is not None
+            return nodes.create_managed_node(
                 self._index, author, content, media_type, title
             )
-        self.refresh()
-        return node_id
 
     def create_edge(
         self, source: str | UUID, target: str | UUID, content: str | None = None
     ) -> UUID:
         """Create a directed edge between two existing nodes, carrying
         ``text/plain`` content or, with ``content=None``, none (format 3.1)."""
-        edge_id = edges.create_edge(
-            self._index, self._writer(), source, target, content
-        )
-        self.refresh()
-        return edge_id
+        with self._writing() as author:
+            return edges.create_edge(self._index, author, source, target, content)
 
     def supersede_node(
         self,
@@ -262,33 +327,28 @@ class Archive:
         media_type: MediaType = MediaType.TEXT_MARKDOWN,
     ) -> UUID:
         """Replace a node's content (append-only); ``title=None`` keeps it."""
-        node_id = nodes.supersede_node(
-            self._index, self._writer(), node, content, title, media_type
-        )
-        self.refresh()
-        return node_id
+        with self._writing() as author:
+            return nodes.supersede_node(
+                self._index, author, node, content, title, media_type
+            )
 
     def supersede_edge(self, edge: str | UUID, content: str | None = None) -> UUID:
         """Replace an edge's content (append-only), or drop it with
         ``content=None``; endpoints never change."""
-        edge_id = edges.supersede_edge(self._index, self._writer(), edge, content)
-        self.refresh()
-        return edge_id
+        with self._writing() as author:
+            return edges.supersede_edge(self._index, author, edge, content)
 
     # -- meta network --------------------------------------------------------
 
     def create_tag(self, name: str, description: str, *, kind: TagKind) -> UUID:
         """Define a node or edge tag; only this archive's author may assign it."""
-        tag_id = tags.create_tag(self._index, self._writer(), name, description, kind)
-        self.refresh()
-        return tag_id
+        with self._writing() as author:
+            return tags.create_tag(self._index, author, name, description, kind)
 
     def set_tag(self, tag: str | UUID, target: str | UUID) -> UUID:
         """Assign ``tag`` to a base node or edge; return the meta-edge UUID."""
-        try:
-            return tags.set_tag(self._index, self._writer(), tag, target)
-        finally:
-            self.refresh()
+        with self._writing() as author:
+            return tags.set_tag(self._index, author, tag, target)
 
     # -- attestation -------------------------------------------------------
 
@@ -303,9 +363,8 @@ class Archive:
         """
         if network not in ("base", "meta"):
             raise ValueError(f"network must be 'base' or 'meta', not {network!r}")
-        new_head = transcription.transcribe(self._index, self._writer(), network, note)
-        self.refresh()
-        return new_head
+        with self._writing() as author:
+            return transcription.transcribe(self._index, author, network, note)
 
     # -- seals ---------------------------------------------------------------
 
@@ -320,11 +379,8 @@ class Archive:
                 seal, or its blob store holds unreferenced files (see
                 :meth:`unreferenced_blobs`; delete them first).
         """
-        author = self._writer()
-        self._verify_fully()
-        new_seal = sealing.seal(self._index, author)
-        self.refresh()
-        return new_seal
+        with self._writing(full=True) as author:
+            return sealing.seal(self._index, author)
 
     def unreferenced_blobs(self) -> list[Path]:
         """Files in the blob store that no event references (crash leftovers or
@@ -401,8 +457,7 @@ class Archive:
         """Create a node per entry of ``input_folder``, then an edge per line
         (``source,target,content``) of ``edges_file`` (after a ``FULL``
         verification)."""
-        author = self._writer()
-        self._verify_fully()
+        self._writer()
         file_paths: Sequence[Path] = (
             ingest.list_folder(input_folder) if input_folder else []
         )
@@ -410,15 +465,13 @@ class Archive:
         if edges_file:
             with open(edges_file, "rt", encoding="utf-8") as handle:
                 edge_definitions = handle.readlines()
-        try:
+        with self._writing(full=True) as author:
             return ingest.ingest(
                 self._index,
                 author,
                 file_paths=file_paths,
                 edge_definitions=edge_definitions,
             )
-        finally:
-            self.refresh()
 
     def export_graphml(
         self, output_path: str | Path, tags: Sequence[str | UUID] = ()

@@ -208,6 +208,7 @@ Archive.open(
     verify="incremental",    # "none" | "incremental" | "full" (or VerificationLevel)
     trusted_seal=None,       # a seal hash you obtained separately
     cache_dir=None,          # verification cache; default: IK_CACHE_DIR or the OS cache dir
+    lock_timeout=None,       # seconds a write waits for another writer; default 10
 ) -> Archive
 ```
 
@@ -216,7 +217,19 @@ log (see [Verification levels](#verification-levels-and-the-trust-model)),
 then builds the in-memory index. A folder that does not exist is an empty
 archive; it is created on the first write. Raises `IntegrityError` if the
 archive is corrupted or tampered with, or if `trusted_seal` is not in its
-seal log; `ValueError` for an unknown `verify` level.
+seal log; `ValueError` for an unknown `verify` level or a negative
+`lock_timeout`.
+
+**Several writers on one machine.** Writes are serialised across processes
+(for example the desktop app and `ik` on the same archive): every write holds
+the advisory lock file `.ik.lock` at the archive root, re-reads the archive
+inside the lock, so it chains onto the latest event even if another process
+wrote after this `Archive` was opened, then appends and releases. A write
+waits up to `lock_timeout` seconds for the lock, then raises
+`ArchiveLockedError`; reads never take it. `.ik.lock` is not part of the
+archive: readers ignore it, it stays in place after use, and it is safe to
+delete when no `ik` process is running. If the archive lives in a git
+repository, add `.ik.lock` to `.gitignore`.
 
 ```python
 from indiek import Archive, VerificationLevel
@@ -476,7 +489,8 @@ IndieKError
 ├── IntegrityError       the archive on disk is corrupted, tampered with or inconsistent
 ├── UnknownItemError     an ID or alias does not resolve (also a ValueError)
 ├── AuthorshipError      the current author may not do this (also a ValueError)
-└── ArchiveRuleError     the write would break a rule of the format (also a ValueError)
+├── ArchiveRuleError     the write would break a rule of the format (also a ValueError)
+└── ArchiveLockedError   another process kept the write lock longer than lock_timeout
 ```
 
 ```python
@@ -556,7 +570,7 @@ Both main variables can live in the dotenv file (`ik keygen --write`,
 | Exit status | Meaning |
 | --- | --- |
 | `0` | Success. |
-| `1` | The command failed: integrity, unknown item, authorship, archive rule, invalid key. One line `ik: error: <message>` on stderr, no traceback (`--logging-level DEBUG` adds it). |
+| `1` | The command failed: integrity, unknown item, authorship, archive rule, archive locked by another writer (after 10 s), invalid key. One line `ik: error: <message>` on stderr, no traceback (`--logging-level DEBUG` adds it). |
 | `2` | Usage error: missing or invalid flag, or `IK_ARCHIVE_PATH` not set. |
 
 A malformed key exits 1 with `ik: error: IK_AUTHOR_PRIVATE_KEY is invalid: <reason>`;
@@ -985,8 +999,10 @@ re-hash them all.
 ## Known limitations
 
 - **One writer per history.** Each log is a single chain. Two copies extended
-  independently cannot be merged (`Chain broken!`), and there is no lock
-  against two local processes writing at the same moment.
+  independently cannot be merged (`Chain broken!`). Processes writing to the
+  same folder on one machine are serialised by `.ik.lock` (see
+  [`Archive.open`](#archiveopen)); on network drives (NFS, SMB) that lock may
+  not be honoured.
 - **Clock changes.** Events are filed by their UTC date; writing after the
   system clock moved back across midnight breaks the chain.
 - **`local_file` paths** are absolute paths of the writer's machine.
