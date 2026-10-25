@@ -34,6 +34,8 @@ from indiek.core.errors import (
     AuthorshipError,
     IndieKError,
     IntegrityError,
+    KeychainError,
+    KeychainUnavailableError,
     UnknownItemError,
 )
 from indiek.core.index import ArchiveIndex, IndexedItem, ItemKind, TranscriptionRecord
@@ -61,6 +63,8 @@ __all__ = [
     "IngestResult",
     "IntegrityError",
     "ItemKind",
+    "KeychainError",
+    "KeychainUnavailableError",
     "MediaType",
     "MetaEventType",
     "ResourceType",
