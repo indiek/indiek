@@ -6,6 +6,31 @@ All notable changes to the `indiek` package are documented here.
 ### Added
 ### Changed
 
+## 1.3.0 - 2026-10-25
+
+### Added
+- (DESKTOP:KEY-ONBOARDING) **Author keys in the OS keychain**, shared by `ik` and the IndieK
+  Desktop App: new module `indiek.keys` — `resolve_author()` (`IK_AUTHOR_PRIVATE_KEY` first,
+  then the keychain, else read-only; `KeySource`, `ResolvedAuthor`), `store_in_keychain`
+  (refuses to replace without `overwrite=True`), `load_from_keychain`, `delete_from_keychain`,
+  `keychain_available`. Owner decisions 2026-10-25: `keyring` package; env wins; no usable
+  keychain → `KeychainUnavailableError`, never a silent plaintext file.
+- **Encrypted key backups**: `export_backup(author, password)` / `import_backup(data, password)`;
+  versioned JSON (public key in clear; seed sealed with XSalsa20-Poly1305, key from Argon2id at
+  moderate cost, ≈ 4 s / 256 MiB on the owner's machine). Passwords ≥ 12 characters; wrong
+  password, tampering, unknown versions and absurd KDF costs are refused.
+- `KeychainError`, `KeychainUnavailableError` (both `IndieKError`), exported from `indiek`.
+- CLI: `ik keygen --keychain [--force]`, `ik key_show`, `ik key_backup --out FILE`,
+  `ik key_restore FILE [--write | --keychain] [--force]` (passwords via `getpass`); every
+  archive command signs with the keychain key when `IK_AUTHOR_PRIVATE_KEY` is unset.
+- Extras: `keychain = ["keyring>=25.7.0"]`; `cli` now includes `keyring`.
+- Tests: `tests/sdk/test_keys.py` (24), `tests/cli/test_cli_keys.py` (13); every test runs
+  against an in-memory keychain (autouse fixture), never the real one. Suite: 493 passed, 1 xfailed.
+
+### Changed
+- README: install extras, "Keys in the OS keychain", errors, CLI table, environment, the three
+  `key_*` commands.
+
 ## 1.2.0 - 2026-10-25
 
 ### Added

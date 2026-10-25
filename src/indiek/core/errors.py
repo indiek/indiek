@@ -40,3 +40,12 @@ class ArchiveRuleError(IndieKError, ValueError):
 class ArchiveLockedError(IndieKError):
     """Another process holds the archive's write lock (``<archive>/.ik.lock``)
     for longer than the writer's ``lock_timeout``."""
+
+
+class KeychainError(IndieKError):
+    """The OS keychain refused an operation on the IndieK author key."""
+
+
+class KeychainUnavailableError(KeychainError):
+    """No usable OS keychain (none installed, locked, or the ``keyring``
+    package is missing); use ``IK_AUTHOR_PRIVATE_KEY`` instead."""

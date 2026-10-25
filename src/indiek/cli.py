@@ -17,6 +17,7 @@ limitations under the License.
 import argparse
 import logging
 import os
+import getpass
 import sys
 from pathlib import Path
 from typing import NoReturn
@@ -40,6 +41,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - depends on install extr
         f"The ik CLI needs optional dependencies ({exc.name} is missing). "
         "Install with: pip install 'indiek[cli]'"
     ) from exc
+from indiek import keys
 from indiek.ops.nodes import extract_content_and_mime
 
 logger = logging.getLogger(__name__)
@@ -99,15 +101,50 @@ def build_parser() -> argparse.ArgumentParser:
         "keygen",
         help=f"Generate a new Ed25519 author key ({PRIVATE_KEY_VAR}).",
     )
-    keygen_parser.add_argument(
+    keygen_target = keygen_parser.add_mutually_exclusive_group()
+    keygen_target.add_argument(
         "--write",
         action="store_true",
         help="Store the key in the --dot-env file instead of printing it.",
     )
+    keygen_target.add_argument(
+        "--keychain",
+        action="store_true",
+        help="Store the key in the OS keychain (shared with the IndieK Desktop App).",
+    )
     keygen_parser.add_argument(
         "--force",
         action="store_true",
-        help="With --write, replace a key already present in the --dot-env file.",
+        help="With --write/--keychain, replace a key already stored there (it is lost).",
+    )
+
+    subparsers.add_parser(
+        "key_show",
+        help=f"Show the signing author's public key and where it comes from ({PRIVATE_KEY_VAR} or keychain).",
+    )
+    key_backup_parser = subparsers.add_parser(
+        "key_backup",
+        help="Write a password-encrypted backup of the signing key.",
+    )
+    key_backup_parser.add_argument(
+        "--out", required=True, help="Backup file to create."
+    )
+    key_restore_parser = subparsers.add_parser(
+        "key_restore",
+        help="Restore a key from an encrypted backup (prints it, or stores it).",
+    )
+    key_restore_parser.add_argument("backup", help="Backup file written by key_backup.")
+    restore_target = key_restore_parser.add_mutually_exclusive_group()
+    restore_target.add_argument(
+        "--write", action="store_true", help="Store the key in the --dot-env file."
+    )
+    restore_target.add_argument(
+        "--keychain", action="store_true", help="Store the key in the OS keychain."
+    )
+    key_restore_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace a key already stored there (it is lost).",
     )
 
     node_parser = subparsers.add_parser("create_node", help="Create a new node")
@@ -326,7 +363,16 @@ def _configure_logging(level: str) -> None:
 
 
 def _keygen(args: argparse.Namespace) -> None:
-    author = Author.generate()
+    _store_author(Author.generate(), args)
+
+
+def _store_author(author: Author, args: argparse.Namespace) -> None:
+    """Print ``author``'s seed, or store it in the dotenv file / OS keychain."""
+    if args.keychain:
+        keys.store_in_keychain(author, overwrite=args.force)
+        print("Author key stored in the OS keychain", file=sys.stderr)
+        print(f"Public key: {author.public_key_hex}", file=sys.stderr)
+        return
     if not args.write:
         print(f"{PRIVATE_KEY_VAR}={author.seed_hex}")
         print(f"Public key: {author.public_key_hex}", file=sys.stderr)
@@ -388,6 +434,48 @@ def _print_fsck(report: FsckReport) -> None:
     print("\n".join(lines))
 
 
+def _key_show() -> None:
+    resolved = keys.resolve_author()
+    if resolved.author is None:
+        _fail(
+            f"No author key (read-only): set {PRIVATE_KEY_VAR} or run `ik keygen --keychain`"
+        )
+    where = PRIVATE_KEY_VAR if resolved.source is keys.KeySource.ENV else "OS keychain"
+    print(f"Public key: {resolved.author.public_key_hex}")
+    print(f"Source: {where}")
+
+
+def _key_backup(args: argparse.Namespace) -> None:
+    author = keys.resolve_author().author
+    if author is None:
+        _fail(
+            f"No author key to back up: set {PRIVATE_KEY_VAR} or run `ik keygen --keychain`"
+        )
+    out = Path(args.out)
+    if out.exists():
+        _fail(f"{out} already exists; choose another file")
+    password = getpass.getpass("Backup password (at least 12 characters): ")
+    if getpass.getpass("Repeat the password: ") != password:
+        _fail("The passwords do not match")
+    data = keys.export_backup(author, password)
+    fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(data)
+    print(
+        f"Encrypted backup of {author.public_key_hex} written to {out}", file=sys.stderr
+    )
+    print(
+        "Keep the file and the password apart; without the password it is useless.",
+        file=sys.stderr,
+    )
+
+
+def _key_restore(args: argparse.Namespace) -> None:
+    data = Path(args.backup).read_bytes()
+    author = keys.import_backup(data, getpass.getpass("Backup password: "))
+    _store_author(author, args)
+
+
 def _fail(message: str) -> NoReturn:
     """Report a failed command on one stderr line and exit 1 (traceback at DEBUG)."""
     logger.debug("ik failed", exc_info=True)
@@ -405,8 +493,21 @@ def main() -> None:
     archive_path = os.getenv(ARCHIVE_PATH_VAR)
 
     # Bootstrap commands: no archive, no key.
-    if args.command == "keygen":
-        _keygen(args)
+    key_commands = {
+        "keygen": lambda: _keygen(args),
+        "key_show": _key_show,
+        "key_backup": lambda: _key_backup(args),
+        "key_restore": lambda: _key_restore(args),
+    }
+    if args.command in key_commands:
+        try:
+            key_commands[args.command]()
+        except (
+            IndieKError,
+            ValueError,
+            OSError,
+        ) as exc:  # messages never contain the seed
+            _fail(str(exc))
         return
     if args.command == "config":
         _config(args, archive_path)
@@ -423,9 +524,8 @@ def main() -> None:
 def _run_archive_command(
     args: argparse.Namespace, parser: argparse.ArgumentParser, archive_path: str
 ) -> None:
-    seed_hex = os.getenv(PRIVATE_KEY_VAR)
-    try:
-        author = Author.from_seed_hex(seed_hex) if seed_hex else None  # None: read-only
+    try:  # IK_AUTHOR_PRIVATE_KEY first, then the OS keychain; None: read-only
+        author = keys.resolve_author().author
     except ValueError as exc:  # never echo the key itself
         _fail(f"{PRIVATE_KEY_VAR} is invalid: {exc}")
     logger.debug("archive_path=%s", archive_path)

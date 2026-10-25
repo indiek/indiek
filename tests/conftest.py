@@ -131,3 +131,32 @@ def ik_cache_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     cache = tmp_path / "ik-cache"
     monkeypatch.setenv("IK_CACHE_DIR", str(cache))
     return cache
+
+
+class MemoryKeyring:
+    """In-memory stand-in for the OS keychain (keyring backend protocol)."""
+
+    priority = 1
+
+    def __init__(self) -> None:
+        self.store: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self.store.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self.store[(service, username)] = password
+
+    def delete_password(self, service: str, username: str) -> None:
+        import keyring.errors
+
+        if self.store.pop((service, username), None) is None:
+            raise keyring.errors.PasswordDeleteError("not found")
+
+
+@pytest.fixture(autouse=True)
+def memory_keyring(monkeypatch: pytest.MonkeyPatch) -> MemoryKeyring:
+    """No test ever touches the developer's real OS keychain."""
+    fake = MemoryKeyring()
+    monkeypatch.setattr("indiek.keys._default_backend", lambda: fake)
+    return fake
