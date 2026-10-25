@@ -207,7 +207,8 @@ def test_the_archive_root_holds_only_the_documented_entries(
 ) -> None:
     ik.seal()
     ik.write_manifest()
-    assert {p.name for p in root.iterdir()} == {
+    # `.ik.lock` = the advisory write lock (SDK2:WRITE-LOCK), not archive content.
+    assert {p.name for p in root.iterdir()} - {".ik.lock"} == {
         "MANIFEST.json",
         "SPEC.md",
         "test_vectors.json",

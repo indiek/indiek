@@ -6,6 +6,32 @@ All notable changes to the `indiek` package are documented here.
 ### Added
 ### Changed
 
+## 1.2.0 - 2026-10-25
+
+### Added
+- (SDK2:WRITE-LOCK) **Writes are serialised across processes.** Every write
+  (`create_node`, `create_edge`, `supersede_node`, `supersede_edge`, `create_tag`,
+  `set_tag`, `transcribe`, `seal`, `ingest`, and the matching `ik` commands) holds the
+  advisory lock `<archive>/.ik.lock`, re-reads the archive inside it (so it chains onto
+  the true head even if another process wrote since the `Archive` was opened; this used
+  to fork the log → `Chain broken!`), appends, and releases. Reads never take the lock.
+  Owner decisions 2026-10-25: the `filelock` package; lock file at the archive root;
+  wait up to `lock_timeout` seconds (default 10), then fail.
+- `Archive.open(..., lock_timeout=None)`; `ValueError` if negative.
+- `ArchiveLockedError(IndieKError)`, exported from `indiek`; the CLI prints it as
+  `ik: error: Archive is being written by another process …` (exit 1).
+- New dependency: `filelock>=4.2.4`.
+- Tests: `tests/sdk/test_write_lock.py` (13, incl. two racing processes), 1 CLI test.
+  Suite: 456 passed, 1 xfailed.
+
+### Changed
+- Each write now re-reads the archive before and after appending (was: after only).
+- `.ik.lock` stays at the archive root after use (filelock never deletes it, by design).
+  Format, `SPEC.md` and test vectors unchanged: SPEC §3.1 already requires readers to
+  ignore any other root entry. Two layout tests now allow `.ik.lock`.
+- README: `lock_timeout`, "Several writers on one machine", `ArchiveLockedError`, CLI
+  exit codes, known limitations (lock not honoured on network drives).
+
 ## 1.1.0 - 2026-10-22
 
 ### Added
