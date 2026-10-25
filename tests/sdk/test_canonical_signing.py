@@ -196,7 +196,7 @@ def test_log_lines_with_duplicate_keys_or_floats_are_rejected(
         list(_write_log_line(tmp_path, line))
 
 
-@pytest.mark.parametrize("version", ["1.0", "2.0", "3.1"])
+@pytest.mark.parametrize("version", ["1.0", "2.0", "3.2", "4.0"])
 def test_events_of_another_format_version_are_rejected(
     tmp_path: Path, version: str
 ) -> None:
@@ -239,7 +239,7 @@ def _test_vectors() -> list[dict[str, Any]]:
         .read_text(encoding="utf-8")
     )
     document = json.loads(raw)
-    assert document["format_version"] == "3.0"
+    assert document["format_version"] == "3.1"
     assert document["vectors"]
     return document["vectors"]
 

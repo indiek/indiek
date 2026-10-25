@@ -44,11 +44,13 @@ def files(tmp_path: Path) -> dict[str, Path]:
         "md": directory / "limits.md",
         "png": directory / "scan.png",
         "csv": directory / "data.csv",
+        "pdf": directory / "paper.pdf",
     }
     paths["txt"].write_text("plain body", encoding="utf-8")
     paths["md"].write_text("# Limits\n", encoding="utf-8")
     paths["png"].write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8)
     paths["csv"].write_text("a,b\n", encoding="utf-8")
+    paths["pdf"].write_bytes(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n" + b"\x00" * 8)
     return paths
 
 
@@ -108,6 +110,16 @@ def test_extract_reads_binary_files_as_bytes(files: dict[str, Path]) -> None:
     content, media_type = nodes.extract_content_and_mime(str(files["png"]))
     assert content == files["png"].read_bytes()
     assert media_type is MediaType.IMAGE_PNG
+
+
+def test_extract_reads_pdf_files_as_pdfa_bytes(files: dict[str, Path]) -> None:
+    content, media_type = nodes.extract_content_and_mime(str(files["pdf"]))
+    assert content == files["pdf"].read_bytes()
+    assert media_type is MediaType.APPLICATION_PDF_A
+
+
+def test_detect_maps_pdf_case_insensitively(tmp_path: Path) -> None:
+    assert nodes.detect_media_type(tmp_path / "SCAN.PDF") is MediaType.APPLICATION_PDF_A
 
 
 def test_extract_treats_non_paths_as_literal_text() -> None:
@@ -190,6 +202,15 @@ def test_create_local_file_node_records_fingerprint(
     assert body["title"] == "note"
     assert body["media_type"] == MediaType.TEXT_PLAIN.value
     assert index.store.blobs.iter_hashes() == []
+
+
+def test_create_local_file_node_detects_pdf(root: Path, files: dict[str, Path]) -> None:
+    nodes.create_local_file_node(_index(root), AUTHOR, files["pdf"])
+    body = _index(root).get("e1").body
+    assert (body["media_type"], body["title"]) == (
+        MediaType.APPLICATION_PDF_A.value,
+        "paper",
+    )
 
 
 def test_create_local_file_node_rejects_missing_file(

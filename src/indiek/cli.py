@@ -153,12 +153,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--edge-id", required=True, help="Edge UUID or human-friendly ID"
     )
     supersede_edge_parser.add_argument(
-        "--content", required=True, help="Replacement text content"
+        "--content", help="Replacement text content (omit for an edge without content)"
     )
 
     edge_parser = subparsers.add_parser("create_edge", help="Create a new edge")
     edge_parser.add_argument(
-        "--content", required=True, help="Text content attached to edge"
+        "--content", help="Text content attached to edge (omit for none)"
     )
     edge_parser.add_argument(
         "--source-node",

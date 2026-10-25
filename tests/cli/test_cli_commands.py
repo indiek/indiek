@@ -52,6 +52,20 @@ def test_create_node_from_file_defaults_title_to_file_stem(
     assert _only_event(base_events())["body"]["title"] == "limits"
 
 
+def test_create_node_from_pdf_file_stores_pdfa_bytes(
+    run_cli: Callable[..., None],
+    base_events: Callable[[], list[dict[str, Any]]],
+    sample_files: dict[str, Path],
+) -> None:
+    run_cli("create_node", "--content", str(sample_files["pdf"]))
+
+    body = _only_event(base_events())["body"]
+    assert (body["media_type"], body["title"]) == (
+        "application/pdf; profile=pdfa",
+        "paper",
+    )
+
+
 def test_create_node_rejects_unsupported_file_without_writing(
     run_cli: Callable[..., None],
     base_events: Callable[[], list[dict[str, Any]]],
@@ -134,11 +148,8 @@ def test_create_edge_prints_the_new_edge_id(
     assert f"Edge created: {edge_id}" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize(
-    "missing",
-    ["--content", "--source-node", "--target-node"],
-)
-def test_create_edge_requires_all_three_flags(
+@pytest.mark.parametrize("missing", ["--source-node", "--target-node"])
+def test_create_edge_requires_both_endpoints(
     run_cli: Callable[..., None],
     two_nodes: tuple[str, str],
     missing: str,
@@ -153,6 +164,25 @@ def test_create_edge_requires_all_three_flags(
     with pytest.raises(SystemExit) as excinfo:
         run_cli("create_edge", *flat)
     assert excinfo.value.code == 2
+
+
+def test_create_edge_and_supersede_edge_without_content(
+    run_cli: Callable[..., None],
+    base_events: Callable[[], list[dict[str, Any]]],
+    two_nodes: tuple[str, str],
+) -> None:
+    run_cli("create_edge", "--source-node", "e1", "--target-node", "e2")
+    created = base_events()[-1]
+    assert (created["header"]["version"], created["body"]["resource_type"]) == (
+        "3.1",
+        "none",
+    )
+    assert created["body"]["blob_hash"] is None
+
+    run_cli("supersede_edge", "--edge-id", "e3", "--content", "cites")
+    run_cli("supersede_edge", "--edge-id", "e3")
+    bodies = [event["body"] for event in base_events()[-2:]]
+    assert [body["resource_type"] for body in bodies] == ["managed", "none"]
 
 
 # --- create_edge_tag -------------------------------------------------------------

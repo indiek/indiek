@@ -1,4 +1,4 @@
-"""Regenerate ``src/indiek/spec/test_vectors.json`` (format 3.0) deterministically.
+"""Regenerate ``src/indiek/spec/test_vectors.json`` (formats 3.0 and 3.1) deterministically.
 
 Run from ``public_archive/``::
 
@@ -24,7 +24,8 @@ from indiek.core.author import Author
 from indiek.core.canonical import canonical_bytes, digest, event_hash
 from indiek.core.merkle import blob_root
 from indiek.core.models import (
-    EVENT_FORMAT_VERSION,
+    CONTENTLESS_FORMAT_VERSION,
+    FORMAT_VERSION,
     Edge,
     EventHeader,
     EventModel,
@@ -34,6 +35,7 @@ from indiek.core.models import (
     MetaEventType,
     LogTip,
     Node,
+    ResourceType,
     SealModel,
     Tag,
     Transcription,
@@ -195,7 +197,25 @@ def build_vectors() -> list[dict[str, Any]]:
             ),
         ),
     )
-    return [genesis, chained, meta, transcription]
+    content_less = _vector(
+        "base content-less create_edge (format 3.1, resource_type none)",
+        alice_seed,
+        EventModel(
+            header=EventHeader(
+                version=CONTENTLESS_FORMAT_VERSION,
+                prev_hash=transcription["event_hash"],
+                timestamp=TIMESTAMP,
+                author=alice,
+            ),
+            body=Edge(
+                edge_id=UUID("019a0000-0000-7000-8000-000000000004"),
+                source_node=node_id,
+                target_node=node_id,
+                resource_type=ResourceType.NONE,
+            ),
+        ),
+    )
+    return [genesis, chained, meta, transcription, content_less]
 
 
 def build_merkle_vectors() -> list[dict[str, Any]]:
@@ -212,7 +232,7 @@ def build_merkle_vectors() -> list[dict[str, Any]]:
 def build_seal_vectors(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """One seal of the base vectors (genesis, chained, transcription) and the
     meta vector, by the first author."""
-    genesis, chained, meta, transcription = events
+    genesis, chained, meta, transcription = events[:4]
     seed_hex = genesis["seed_hex"]
     author = Author.from_seed_hex(seed_hex)
     referenced = [
@@ -249,7 +269,7 @@ def build_seal_vectors(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def main() -> None:
     document = {
-        "format_version": EVENT_FORMAT_VERSION,
+        "format_version": FORMAT_VERSION,
         "description": (
             "Test vectors of the IndieK archive format: an independent implementation "
             "must reproduce every hex value from event_unsigned and seed_hex."

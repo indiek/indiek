@@ -1,5 +1,5 @@
 {
-  "format_version": "3.0",
+  "format_version": "3.1",
   "description": "Test vectors of the IndieK archive format: an independent implementation must reproduce every hex value from event_unsigned and seed_hex.",
   "rules": {
     "canonical_bytes": "RFC 8785 (JCS) restricted to ASCII object keys and integers in [-(2^53-1), 2^53-1]; inside that subset it equals json.dumps(obj, sort_keys=True, separators=(\",\", \":\"), ensure_ascii=False) encoded as UTF-8",
@@ -227,6 +227,67 @@
         "signature": "ed25519:42a3f08c963ae5582469cb33cfb9c839d1672a3984f040df37b17e60e16365c50ffa499a2b91dff0848cbc3f6f3fbb29674192ff3d7a946fe6a916a1687f2002"
       },
       "event_hash": "sha256:e19ed57fb0b95341a097914dac7b1788e5e0d6a04d7c9e7dd988ecb4ece52860"
+    },
+    {
+      "name": "base content-less create_edge (format 3.1, resource_type none)",
+      "seed_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+      "public_key_hex": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+      "event_unsigned": {
+        "header": {
+          "version": "3.1",
+          "hash_alg": "sha256",
+          "sig_alg": "ed25519",
+          "prev_hash": "sha256:e19ed57fb0b95341a097914dac7b1788e5e0d6a04d7c9e7dd988ecb4ece52860",
+          "timestamp": "2026-10-17T12:00:00Z",
+          "author": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+        },
+        "body": {
+          "event_type": "create_edge",
+          "resource_type": "none",
+          "media_type": null,
+          "blob_hash": null,
+          "uri": null,
+          "path": null,
+          "file_size": null,
+          "file_hash": null,
+          "last_verified": null,
+          "title": null,
+          "body_type": "edge",
+          "edge_id": "019a0000-0000-7000-8000-000000000004",
+          "source_node": "019a0000-0000-7000-8000-000000000001",
+          "target_node": "019a0000-0000-7000-8000-000000000001"
+        }
+      },
+      "signing_bytes_hex": "7b22626f6479223a7b22626c6f625f68617368223a6e756c6c2c22626f64795f74797065223a2265646765222c22656467655f6964223a2230313961303030302d303030302d373030302d383030302d303030303030303030303034222c226576656e745f74797065223a226372656174655f65646765222c2266696c655f68617368223a6e756c6c2c2266696c655f73697a65223a6e756c6c2c226c6173745f7665726966696564223a6e756c6c2c226d656469615f74797065223a6e756c6c2c2270617468223a6e756c6c2c227265736f757263655f74797065223a226e6f6e65222c22736f757263655f6e6f6465223a2230313961303030302d303030302d373030302d383030302d303030303030303030303031222c227461726765745f6e6f6465223a2230313961303030302d303030302d373030302d383030302d303030303030303030303031222c227469746c65223a6e756c6c2c22757269223a6e756c6c7d2c22686561646572223a7b22617574686f72223a2238613838653364643734303966313935666435326462326433636261356437326361363730396266316439343132316266333734383830316234306636663563222c22686173685f616c67223a22736861323536222c22707265765f68617368223a227368613235363a65313965643537666230623935333431613039373931346461633762313738386535653064366130346437633965376464393838656362346563653532383630222c227369675f616c67223a2265643235353139222c2274696d657374616d70223a22323032362d31302d31375431323a30303a30305a222c2276657273696f6e223a22332e31227d7d",
+      "signature": "ed25519:0cd9f4c8c0bb9a3aa93d45c08a0802dabc2a39c6cb31a890717806a835e80146e0616bccdb5570422297c38b4c2eaf4ae62d807458a3cbab764f8f893f3b900b",
+      "event": {
+        "header": {
+          "version": "3.1",
+          "hash_alg": "sha256",
+          "sig_alg": "ed25519",
+          "prev_hash": "sha256:e19ed57fb0b95341a097914dac7b1788e5e0d6a04d7c9e7dd988ecb4ece52860",
+          "timestamp": "2026-10-17T12:00:00Z",
+          "author": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+        },
+        "body": {
+          "event_type": "create_edge",
+          "resource_type": "none",
+          "media_type": null,
+          "blob_hash": null,
+          "uri": null,
+          "path": null,
+          "file_size": null,
+          "file_hash": null,
+          "last_verified": null,
+          "title": null,
+          "body_type": "edge",
+          "edge_id": "019a0000-0000-7000-8000-000000000004",
+          "source_node": "019a0000-0000-7000-8000-000000000001",
+          "target_node": "019a0000-0000-7000-8000-000000000001"
+        },
+        "signature": "ed25519:0cd9f4c8c0bb9a3aa93d45c08a0802dabc2a39c6cb31a890717806a835e80146e0616bccdb5570422297c38b4c2eaf4ae62d807458a3cbab764f8f893f3b900b"
+      },
+      "event_hash": "sha256:cbdd428ec7159d2bbdebbfdb2c12b39d0631b27211c2d885436344c46dce233a"
     }
   ],
   "merkle_vectors": [

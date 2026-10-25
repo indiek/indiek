@@ -13,7 +13,7 @@ from indiek.core.archive import ArchiveStore
 from indiek.core.author import Author
 from indiek.core.errors import ArchiveRuleError, UnknownItemError
 from indiek.core.index import ArchiveIndex
-from indiek.core.models import EVENT_FORMAT_VERSION
+from indiek.core.models import FORMAT_VERSION
 from indiek.ops import tags
 from indiek.ops.export import export_graphml
 from indiek.ops.ingest import IngestResult, ingest, list_folder
@@ -145,7 +145,7 @@ def test_write_manifest(root: Path) -> None:
     path = write_manifest(root, [AUTHOR.public_key_hex])
     assert path == root.resolve() / "MANIFEST.json"
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["format_version"] == EVENT_FORMAT_VERSION
+    assert data["format_version"] == FORMAT_VERSION == "3.1"
     assert data["authors"] == [
         {"public_key": AUTHOR.public_key_hex, "algorithm": "Ed25519"}
     ]

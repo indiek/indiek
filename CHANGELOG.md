@@ -3,6 +3,24 @@
 All notable changes to the `indiek` package are documented here.
 
 ## Unreleased
+### Added
+### Changed
+
+## 1.1.0 - 2026-10-22
+
+### Added
+- (SDK2:DROP-EDGE-DATA-REQUIREMENT) **Format 3.1: edges without content.** `Archive.create_edge(source, target, content=None)` / `ik create_edge` without `--content` append an edge with `resource_type: "none"` and every resource field `null`; no blob is written. `supersede_edge(edge, content=None)` / `ik supersede_edge` without `--content` remove an edge's content (and a later supersede may add it back). Owner decisions 2026-10-22: new `resource_type` `"none"` (edges only); format `3.1`, stamped **only** on events that need it, so archives without content-less edges stay readable by indiek 1.0/1.1 (follows the 2026-10-17 rule: backward compatibility required from the first public release on).
+- `indiek.core.models`: `ResourceType.NONE`, `CONTENTLESS_FORMAT_VERSION` (`"3.1"`), `FORMAT_VERSION` (latest, `"3.1"`), `SUPPORTED_FORMAT_VERSIONS`, `CONTENTLESS_BODY_TYPES`; `EventModel` rejects a `none` body unless its header says `3.1`.
+- New reader error `IntegrityError("Invalid resource type 'none': …")`: a `none` body in a `3.0` event, on a non-edge body, or with a resource field set.
+- Test vector: a content-less `3.1` edge chained after the transcription (seal vector unchanged). Tests: `tests/sdk/test_contentless_edges.py` (17), 1 CLI test. Suite: 442 passed, 1 xfailed.
+- (SDK2:ACCEPT-PDFA) `.pdf` files are accepted wherever the media type is detected from a file name: `ik create_node --content file.pdf`, `--resource-type local_file --path file.pdf`, `ik ingest` / `Archive.ingest()` and `Archive.create_node(resource_type=LOCAL_FILE, …)`. They are stored as bytes with `application/pdf; profile=pdfa` (`MediaType.APPLICATION_PDF_A`). Conformance to PDF/A is not checked (owner decision 2026-10-22: PDF/A shares the `application/pdf` media type; the type is the writer's claim). Format `3.0`, `SPEC.md` and the test vectors are unchanged. Tests: 4 SDK, 1 CLI.
+
+### Changed
+- Readers accept event format versions `3.0` and `3.1` (seals stay `3.0`). `MANIFEST.json` and `test_vectors.json` report `format_version: "3.1"`.
+- `SPEC.md` is now format 3.1: §6.2 version, §7.2 `none` rule, §13, §15 writer rule (stamp `3.1` only when needed), §18, §19, §21.
+- `--content` is optional for `ik create_edge` and `ik supersede_edge`. GraphML export omits `edge_hash` for content-less edges.
+- README: format 3.1, content-less edges in the SDK and CLI references, a new "Format versions" section.
+- README: `.pdf` detection documented; the "PDF/A only from the SDK" known limitation replaced by "PDF/A is not checked".
 
 ## 1.0.0 - 2026-10-18
 
