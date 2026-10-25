@@ -4,6 +4,7 @@ All notable changes to the `indiek` package are documented here.
 
 ## Unreleased
 ### Added
+- README: "Support IndieK" section with GitHub Sponsors (`indiek` org) and Ko-fi (`indiek_sponsoring`) links (FOSSDOCS:DONATION-INSTRUCTIONS).
 ### Changed
 
 ## 1.3.0 - 2026-10-25

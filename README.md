@@ -24,6 +24,7 @@ and a command-line tool (`ik`). Broader context, guides and examples live on
 - [Known limitations](#known-limitations)
 - [The archive format](#the-archive-format)
 - [Contributing](#contributing)
+- [Support IndieK](#support-indiek)
 - [License](#license)
 
 ## What is an IndieK archive?
@@ -1131,6 +1132,18 @@ uv run ruff format --check src tests scripts
 Every change comes with tests and a `CHANGELOG.md` entry. After a format
 change, regenerate the test vectors with
 `uv run python scripts/make_test_vectors.py` and update `SPEC.md`.
+
+## Support IndieK
+
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-indiek-bf3989?logo=githubsponsors)](https://github.com/sponsors/indiek)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=ko-fi)](https://ko-fi.com/indiek_sponsoring)
+
+IndieK is free and open-source software. If it's useful to you, you can support its development:
+
+- [GitHub Sponsors](https://github.com/sponsors/indiek), for developers with a GitHub account (0% platform fees)
+- [Ko-fi](https://ko-fi.com/indiek_sponsoring), one-time or monthly, no account needed
+
+All donations strictly fund the open-source core of IndieK and its public infrastructure.
 
 ## License
 
