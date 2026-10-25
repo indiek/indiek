@@ -67,8 +67,10 @@ uv add indiek                   # the SDK only, as a dependency of your project
 pip install 'indiek[cli]'       # with pip
 ```
 
-The SDK depends only on `pydantic` and `pynacl`. The `cli` extra adds `rich`
-(tables) and `python-dotenv` (configuration files). To install from a local
+The SDK depends only on `pydantic`, `pynacl` and `filelock`. The `cli` extra adds
+`rich` (tables), `python-dotenv` (configuration files) and `keyring` (the OS
+keychain, see [Keys in the OS keychain](#keys-in-the-os-keychain)); the
+`keychain` extra adds only `keyring`, for SDK users. To install from a local
 copy of this folder: `uv tool install --editable '.[cli]'`.
 
 ## Quickstart
@@ -197,6 +199,39 @@ assert same.public_key_hex == author.public_key_hex  # what events record as aut
 | `sign(message: bytes) -> bytes` | Raw 64-byte Ed25519 signature. |
 
 `repr(author)` shows only the public key.
+
+### Keys in the OS keychain
+
+`indiek.keys` stores one author key per OS user in the operating system's
+keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service),
+shared by `ik` and the IndieK Desktop App. Needs the `keychain` (or `cli`)
+extra.
+
+```py
+from indiek import keys
+
+keys.resolve_author(environ=None) -> ResolvedAuthor   # .author (Author | None), .source (KeySource)
+keys.store_in_keychain(author, *, overwrite=False) -> None
+keys.load_from_keychain() -> Author | None
+keys.delete_from_keychain() -> bool
+keys.keychain_available() -> bool
+keys.export_backup(author, password) -> bytes          # password-encrypted backup file
+keys.import_backup(data, password) -> Author
+```
+
+- **Precedence.** `resolve_author()` returns the key of `IK_AUTHOR_PRIVATE_KEY`
+  if set (`KeySource.ENV`), else the keychain key (`KeySource.KEYCHAIN`), else
+  no author (`KeySource.NONE`, read-only). A malformed `IK_AUTHOR_PRIVATE_KEY`
+  raises `ValueError` rather than falling back.
+- **No usable keychain** (no backend, locked, `keyring` not installed):
+  `KeychainUnavailableError`; use `IK_AUTHOR_PRIVATE_KEY` instead. The seed is
+  never written to a plaintext file behind your back.
+- **Replacing** a stored key needs `overwrite=True`, otherwise `KeychainError`.
+- **Backups** are UTF-8 JSON files: the public key in clear, the seed
+  encrypted with XSalsa20-Poly1305 under a key derived from the password by
+  Argon2id (moderate cost: 256 MiB, a few seconds). Passwords need at least 12
+  characters. A wrong password or a damaged file raises
+  `ValueError("Wrong password or damaged backup")`.
 
 ### `Archive.open`
 
@@ -490,7 +525,9 @@ IndieKError
 ├── UnknownItemError     an ID or alias does not resolve (also a ValueError)
 ├── AuthorshipError      the current author may not do this (also a ValueError)
 ├── ArchiveRuleError     the write would break a rule of the format (also a ValueError)
-└── ArchiveLockedError   another process kept the write lock longer than lock_timeout
+├── ArchiveLockedError   another process kept the write lock longer than lock_timeout
+└── KeychainError        the OS keychain refused an operation on the author key
+    └── KeychainUnavailableError   no usable OS keychain (use IK_AUTHOR_PRIVATE_KEY)
 ```
 
 ```python
@@ -529,7 +566,10 @@ reports), so it is safe to pipe.
 
 | Command | Purpose | Prints on success |
 | --- | --- | --- |
-| [`keygen`](#ik-keygen) | Generate an author key | `IK_AUTHOR_PRIVATE_KEY=<seed>` (nothing with `--write`) |
+| [`keygen`](#ik-keygen) | Generate an author key | `IK_AUTHOR_PRIVATE_KEY=<seed>` (nothing with `--write` / `--keychain`) |
+| [`key_show`](#ik-key_show) | Show the signing public key and its source | `Public key: <hex>`, `Source: …` |
+| [`key_backup`](#ik-key_backup) | Write a password-encrypted key backup | nothing |
+| [`key_restore`](#ik-key_restore) | Restore a key from a backup | `IK_AUTHOR_PRIVATE_KEY=<seed>` (nothing with `--write` / `--keychain`) |
 | [`config`](#ik-config) | Show or set `IK_ARCHIVE_PATH` | `IK_ARCHIVE_PATH=<value>` |
 | [`create_node`](#ik-create_node) | Add a node (`managed`, `uri`, `local_file`) | `Node created: <uuid>` |
 | [`create_edge`](#ik-create_edge) | Add a directed edge between two nodes | `Edge created: <uuid>` |
@@ -552,13 +592,13 @@ reports), so it is safe to pipe.
 | Variable | Meaning |
 | --- | --- |
 | `IK_ARCHIVE_PATH` | Root folder of the archive (`~` is expanded). |
-| `IK_AUTHOR_PRIVATE_KEY` | The author's Ed25519 seed, 64 hex characters. |
+| `IK_AUTHOR_PRIVATE_KEY` | The author's Ed25519 seed, 64 hex characters. When unset, `ik` signs with the OS keychain key (`ik keygen --keychain`), if any. |
 | `IK_CACHE_DIR` | Optional. Directory of the local verification cache. |
 
 Both main variables can live in the dotenv file (`ik keygen --write`,
 `ik config --set-archive-path`).
 
-- `keygen` and `config` need neither variable.
+- `keygen`, `key_show`, `key_backup`, `key_restore` and `config` need no archive.
 - `read`, `export`, `manifest`, `verify` and `fsck` need only
   `IK_ARCHIVE_PATH`; without a key the archive is opened read-only (and
   `manifest` lists no author).
@@ -586,7 +626,8 @@ Generates a fresh Ed25519 author key. Needs neither a key nor an archive.
 | Flag | Meaning |
 | --- | --- |
 | `--write` | Store the seed in the `--dot-env` file (mode `600`) instead of printing it. |
-| `--force` | With `--write`, replace a key already in that file. The old key is lost. |
+| `--keychain` | Store the seed in the OS keychain (shared with the desktop app) instead of printing it. Exclusive with `--write`. |
+| `--force` | With `--write` / `--keychain`, replace a key already stored there. The old key is lost. |
 
 Without `--write`: prints `IK_AUTHOR_PRIVATE_KEY=<64 hex>` on stdout and
 `Public key: <hex>` on stderr. With `--write`: nothing on stdout; stderr
@@ -596,7 +637,28 @@ signing identity: back it up privately, never share it.
 
 ```bash
 ik --dot-env .env keygen --write
+ik keygen --keychain
 ```
+
+### `ik key_show`
+
+Prints the public key that signs writes and where it comes from
+(`IK_AUTHOR_PRIVATE_KEY` or the OS keychain). Exits 1 with `No author key`
+when there is none. Never prints the seed.
+
+### `ik key_backup`
+
+`ik key_backup --out FILE` writes a password-encrypted backup of the signing
+key (see [Keys in the OS keychain](#keys-in-the-os-keychain)). The password is
+asked twice on the terminal (never a flag, so it stays out of shell history)
+and needs at least 12 characters. The file is created with mode `600`; an
+existing file is never overwritten. Keep the file and the password apart.
+
+### `ik key_restore`
+
+`ik key_restore FILE` asks for the backup password and restores the key:
+printed as `IK_AUTHOR_PRIVATE_KEY=<seed>` by default, or stored with `--write`
+(dotenv file) or `--keychain`; `--force` replaces a key already stored there.
 
 ### `ik config`
 
